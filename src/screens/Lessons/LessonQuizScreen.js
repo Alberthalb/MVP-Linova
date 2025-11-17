@@ -114,8 +114,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl + spacing.sm,
+    paddingHorizontal: spacing.layout,
+    paddingVertical: spacing.layout,
     gap: spacing.md,
   },
   hero: {

@@ -1,9 +1,10 @@
 import "react-native-gesture-handler";
-import AppNavigator from "./src/navigation/AppNavigator";
 import React from "react";
+import AppNavigator from "./src/navigation/AppNavigator";
 import { useFonts, Poppins_700Bold } from "@expo-google-fonts/poppins";
 import { Inter_400Regular } from "@expo-google-fonts/inter";
 import { View, ActivityIndicator } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { colors } from "./src/styles/theme";
 
 export default function App() {
@@ -20,5 +21,9 @@ export default function App() {
     );
   }
 
-  return <AppNavigator />;
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppNavigator />
+    </GestureHandlerRootView>
+  );
 }

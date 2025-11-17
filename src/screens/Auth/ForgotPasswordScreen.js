@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, Alert } from "react-native";
+import { View, Text, StyleSheet, TextInput, Alert, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import CustomButton from "../../components/CustomButton";
 import { colors, spacing, typography } from "../../styles/theme";
@@ -18,7 +18,13 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
-      <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        overScrollMode="always"
+        bounces
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.title}>Recuperar senha</Text>
         <Text style={styles.subtitle}>Enviaremos um link para recuperacao (mock).</Text>
         <View style={styles.card}>
@@ -33,7 +39,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
           />
           <CustomButton title="Enviar link" onPress={handleReset} />
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -44,9 +50,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   container: {
-    flex: 1,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl + spacing.sm,
+    flexGrow: 1,
+    paddingHorizontal: spacing.layout,
+    paddingVertical: spacing.layout,
+    paddingBottom: spacing.layout * 1.5,
     justifyContent: "flex-start",
     gap: spacing.md,
   },

@@ -16,6 +16,7 @@ const SplashScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
       <View style={styles.container}>
+        <View style={styles.glow} />
         <Image source={require("../../../assets/Logotipo.png")} style={styles.logo} resizeMode="contain" />
         <LottieView style={styles.lottie} source={require("../../assets/animations/splash.json")} autoPlay loop />
         <Text style={styles.title}>Linova</Text>
@@ -47,6 +48,15 @@ const styles = StyleSheet.create({
   lottie: {
     width: 200,
     height: 200,
+  },
+  glow: {
+    position: "absolute",
+    width: 320,
+    height: 320,
+    borderRadius: 200,
+    backgroundColor: "rgba(57,126,255,0.12)",
+    top: 80,
+    alignSelf: "center",
   },
   title: {
     fontSize: typography.heading + 8,

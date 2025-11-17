@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import CustomButton from "../../components/CustomButton";
 import { AppContext } from "../../navigation/AppNavigator";
 import { colors, spacing, typography, radius } from "../../styles/theme";
+import { getDisplayName } from "../../utils/userName";
 
 const QUESTIONS = [
   {
@@ -54,7 +55,7 @@ const QUESTIONS = [
 ];
 
 const LevelQuizScreen = ({ navigation }) => {
-  const { setLevel } = useContext(AppContext);
+  const { setLevel, userName } = useContext(AppContext);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
 
@@ -96,6 +97,7 @@ const LevelQuizScreen = ({ navigation }) => {
       <View style={styles.container}>
         <View style={styles.hero}>
           <Text style={styles.title}>Quiz de Nivel</Text>
+          <Text style={styles.subtitle}>Vamos ajustar o conteudo para voce, {getDisplayName(userName)}.</Text>
           <Text style={styles.progress}>
             Pergunta {step + 1} de {totalSteps}
           </Text>
@@ -133,8 +135,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl + spacing.sm,
+    paddingHorizontal: spacing.layout,
+    paddingVertical: spacing.layout,
     gap: spacing.md,
   },
   hero: {
@@ -147,6 +149,11 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.heading,
   },
   progress: {
+    fontSize: typography.body,
+    color: colors.muted,
+    fontFamily: typography.fonts.body,
+  },
+  subtitle: {
     fontSize: typography.body,
     color: colors.muted,
     fontFamily: typography.fonts.body,

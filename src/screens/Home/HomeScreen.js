@@ -6,9 +6,11 @@ import { Feather } from "@expo/vector-icons";
 import CustomButton from "../../components/CustomButton";
 import { AppContext } from "../../navigation/AppNavigator";
 import { colors, spacing, typography, radius } from "../../styles/theme";
+import { getDisplayName } from "../../utils/userName";
 
 const HomeScreen = ({ navigation }) => {
-  const { level } = useContext(AppContext);
+  const { level, userName } = useContext(AppContext);
+  const displayName = getDisplayName(userName, null, "Linova");
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
@@ -17,7 +19,7 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.heroRow}>
             <View>
               <Text style={styles.heroLabel}>Bem-vindo</Text>
-              <Text style={styles.welcome}>Ola!</Text>
+              <Text style={styles.welcome}>Ola, {displayName}!</Text>
             </View>
             <View style={styles.levelPill}>
               <Feather name="star" size={16} color={colors.primary} />
@@ -39,6 +41,7 @@ const HomeScreen = ({ navigation }) => {
 
         <View style={styles.actions}>
           <CustomButton title="Ver aulas" onPress={() => navigation.navigate("LessonList")} />
+          <CustomButton title="Gerenciar conta" variant="ghost" onPress={() => navigation.navigate("Account")} />
           <CustomButton title="Conversacao IA (visual)" variant="ghost" onPress={() => {}} />
         </View>
       </View>
@@ -54,8 +57,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl + spacing.sm,
+    paddingHorizontal: spacing.layout,
+    paddingVertical: spacing.layout,
     gap: spacing.lg,
     justifyContent: "flex-start",
   },

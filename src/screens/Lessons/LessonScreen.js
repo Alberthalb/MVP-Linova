@@ -62,8 +62,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl + spacing.sm,
+    paddingHorizontal: spacing.layout,
+    paddingVertical: spacing.layout,
     gap: spacing.md,
   },
   heading: {

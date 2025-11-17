@@ -1,12 +1,15 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Image } from "react-native";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Image, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import CustomButton from "../../components/CustomButton";
 import { colors, spacing, typography, radius } from "../../styles/theme";
+import { AppContext } from "../../navigation/AppNavigator";
+import { getDisplayName } from "../../utils/userName";
 
 const RegisterScreen = ({ navigation }) => {
+  const { setUserName, setUserEmail } = useContext(AppContext);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,55 +19,79 @@ const RegisterScreen = ({ navigation }) => {
       Alert.alert("Campos obrigatorios", "Preencha todas as informacoes para criar sua conta.");
       return;
     }
+    const derivedName = getDisplayName(name, email);
+    setUserName(derivedName);
+    setUserEmail(email);
     Alert.alert("Conta criada", "Login liberado com suas credenciais mockadas.");
     navigation.replace("Login");
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <LinearGradient colors={[colors.primary, colors.accent]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-          <View style={styles.heroRow}>
-            <Image source={require("../../../assets/Logotipo.png")} style={styles.logo} resizeMode="contain" />
-            <View style={styles.badge}>
-              <Feather name="award" size={14} color={colors.background} />
-              <Text style={styles.badgeText}>Nova conta</Text>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          overScrollMode="always"
+          bounces
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <LinearGradient colors={[colors.primary, colors.accent]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+            <View style={styles.heroRow}>
+              <Image source={require("../../../assets/Logotipo.png")} style={styles.logo} resizeMode="contain" />
+              <View style={styles.badge}>
+                <Feather name="award" size={14} color={colors.background} />
+                <Text style={styles.badgeText}>Nova conta</Text>
+              </View>
             </View>
+            <Text style={styles.title}>Crie sua conta</Text>
+            <Text style={styles.subtitle}>Avance para desbloquear o quiz inicial.</Text>
+          </LinearGradient>
+          <View style={styles.card}>
+            <View style={styles.fieldHeader}>
+              <Text style={styles.fieldLabel}>Nome completo</Text>
+            </View>
+            <TextInput style={styles.input} placeholder="Nome completo" value={name} onChangeText={setName} />
+            <View style={styles.fieldHeader}>
+              <Text style={styles.fieldLabel}>Email</Text>
+            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              value={email}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              onChangeText={setEmail}
+            />
+            <View style={styles.fieldHeader}>
+              <Text style={styles.fieldLabel}>Senha</Text>
+            </View>
+            <TextInput style={styles.input} placeholder="Senha" value={password} onChangeText={setPassword} secureTextEntry />
+            <CustomButton title="Cadastrar" onPress={handleRegister} />
           </View>
-          <Text style={styles.title}>Crie sua conta</Text>
-          <Text style={styles.subtitle}>Avance para desbloquear o quiz inicial.</Text>
-        </LinearGradient>
-        <View style={styles.card}>
-          <TextInput style={styles.input} placeholder="Nome completo" value={name} onChangeText={setName} />
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            value={email}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            onChangeText={setEmail}
-          />
-          <TextInput style={styles.input} placeholder="Senha" value={password} onChangeText={setPassword} secureTextEntry />
-          <CustomButton title="Cadastrar" onPress={handleRegister} />
-        </View>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.footerLinkWrapper}>
-          <Text style={styles.footerText}>Ja tem conta? </Text>
-          <Text style={[styles.footerText, styles.link]}>Entrar</Text>
-        </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.footerLinkWrapper}>
+            <Text style={styles.footerText}>Ja tem conta? </Text>
+            <Text style={[styles.footerText, styles.link]}>Entrar</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   safe: {
     flex: 1,
     backgroundColor: colors.background,
   },
   container: {
-    flex: 1,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl + spacing.sm,
+    flexGrow: 1,
+    paddingHorizontal: spacing.layout,
+    paddingVertical: spacing.layout,
+    paddingBottom: spacing.layout * 1.5,
     justifyContent: "flex-start",
     gap: spacing.md,
   },
@@ -127,6 +154,16 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: "600",
     fontFamily: typography.fonts.body,
+  },
+  fieldHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  fieldLabel: {
+    color: colors.text,
+    fontFamily: typography.fonts.body,
+    fontWeight: "600",
   },
   heroRow: {
     flexDirection: "row",

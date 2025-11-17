@@ -1,14 +1,15 @@
 import React, { useContext, useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Image } from "react-native";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Image, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import CustomButton from "../../components/CustomButton";
 import { AppContext } from "../../navigation/AppNavigator";
 import { colors, spacing, typography, radius } from "../../styles/theme";
+import { getDisplayName } from "../../utils/userName";
 
 const LoginScreen = ({ navigation }) => {
-  const { setLevel } = useContext(AppContext);
+  const { setLevel, setUserName, userName, setUserEmail } = useContext(AppContext);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -21,6 +22,9 @@ const LoginScreen = ({ navigation }) => {
     setLoading(true);
     setTimeout(() => {
       setLevel(null); // reset onboarding level for a fresh start
+      const derivedName = getDisplayName(null, email, userName);
+      setUserName(derivedName);
+      setUserEmail(email);
       setLoading(false);
       navigation.replace("LevelQuiz");
     }, 400);
@@ -28,60 +32,79 @@ const LoginScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <LinearGradient colors={[colors.primary, colors.accent]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-          <View style={styles.heroTop}>
-            <Image source={require("../../../assets/Logotipo.png")} style={styles.logo} resizeMode="contain" />
-            <View style={styles.badge}>
-              <Feather name="zap" size={14} color={colors.background} />
-              <Text style={styles.badgeText}>Beta</Text>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          overScrollMode="always"
+          bounces
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <LinearGradient colors={[colors.primary, colors.accent]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+            <View style={styles.heroTop}>
+              <Image source={require("../../../assets/Logotipo.png")} style={styles.logo} resizeMode="contain" />
+              <View style={styles.badge}>
+                <Feather name="zap" size={14} color={colors.background} />
+                <Text style={styles.badgeText}>Beta</Text>
+              </View>
             </View>
+            <Text style={styles.title}>Bem-vindo a Linova</Text>
+            <Text style={styles.subtitle}>Entre e continue sua jornada</Text>
+          </LinearGradient>
+          <View style={styles.card}>
+            <View style={styles.fieldHeader}>
+              <Text style={styles.fieldLabel}>Email</Text>
+              <Feather name="mail" size={16} color={colors.muted} />
+            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor="#8A8A8A"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <View style={styles.fieldHeader}>
+              <Text style={styles.fieldLabel}>Senha</Text>
+              <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
+                <Text style={styles.fieldAction}>Esqueci</Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="Senha"
+              placeholderTextColor="#8A8A8A"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+            <CustomButton title="Entrar" onPress={handleLogin} loading={loading} />
           </View>
-          <Text style={styles.title}>Bem-vindo a Linova</Text>
-          <Text style={styles.subtitle}>Entre e continue sua jornada</Text>
-        </LinearGradient>
-        <View style={styles.card}>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#8A8A8A"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Senha"
-            placeholderTextColor="#8A8A8A"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-          <CustomButton title="Entrar" onPress={handleLogin} loading={loading} />
-          <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")} style={styles.linkWrapper}>
-            <Text style={styles.link}>Esqueci minha senha</Text>
+          <TouchableOpacity onPress={() => navigation.navigate("Register")} style={styles.footerLinkWrapper}>
+            <Text style={styles.footerText}>Ainda nao tem uma conta? </Text>
+            <Text style={[styles.footerText, styles.link]}>Cadastre-se.</Text>
           </TouchableOpacity>
-        </View>
-        <TouchableOpacity onPress={() => navigation.navigate("Register")} style={styles.footerLinkWrapper}>
-          <Text style={styles.footerText}>Ainda nao tem uma conta? </Text>
-          <Text style={[styles.footerText, styles.link]}>Cadastre-se.</Text>
-        </TouchableOpacity>
-        <Text style={styles.notice}>Aplicativo em versao de testes. Erros podem acontecer.</Text>
+          <Text style={styles.notice}>Aplicativo em versao de testes. Erros podem acontecer.</Text>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   safe: {
     flex: 1,
     backgroundColor: colors.background,
   },
   container: {
-    flex: 1,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl + spacing.sm,
+    flexGrow: 1,
+    paddingHorizontal: spacing.layout,
+    paddingVertical: spacing.layout,
+    paddingBottom: spacing.layout * 1.5,
     justifyContent: "flex-start",
     gap: spacing.md,
   },
@@ -156,6 +179,20 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontFamily: typography.fonts.body,
     textAlign: "center",
+  },
+  fieldHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  fieldLabel: {
+    color: colors.text,
+    fontFamily: typography.fonts.body,
+    fontWeight: "600",
+  },
+  fieldAction: {
+    color: colors.primary,
+    fontWeight: "700",
   },
   heroTop: {
     flexDirection: "row",

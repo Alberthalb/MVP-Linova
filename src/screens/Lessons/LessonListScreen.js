@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useContext, useMemo, useState } from "react";
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { colors, spacing, typography, radius } from "../../styles/theme";
+import { AppContext } from "../../navigation/AppNavigator";
+import { getDisplayName } from "../../utils/userName";
 
 const LESSONS = [
   { id: 1, title: "Basic Greetings", level: "Beginner" },
@@ -11,6 +13,8 @@ const LESSONS = [
 ];
 
 const LessonListScreen = ({ navigation }) => {
+  const { userName } = useContext(AppContext);
+  const friendlyName = getDisplayName(userName);
   const [filter, setFilter] = useState("Todas");
   const [query, setQuery] = useState("");
 
@@ -34,7 +38,9 @@ const LessonListScreen = ({ navigation }) => {
       <View style={styles.header}>
         <View>
           <Text style={styles.heading}>Aulas disponiveis</Text>
-          <Text style={styles.subheading}>Escolha o nivel e encontre sua proxima aula.</Text>
+          <Text style={styles.subheading}>
+            {friendlyName}, escolha o nivel e encontre sua proxima aula.
+          </Text>
         </View>
         <View style={styles.filterRow}>
           {["Todas", "Beginner", "Advanced"].map((tag) => {
@@ -78,9 +84,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xl + spacing.sm,
+    paddingHorizontal: spacing.layout,
+    paddingTop: spacing.layout,
+    paddingBottom: spacing.layout,
   },
   heading: {
     fontSize: typography.heading,
@@ -130,6 +136,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+    shadowColor: colors.cardShadow,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
   chipActive: {
     backgroundColor: colors.primary,
