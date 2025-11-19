@@ -1,12 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useColorScheme } from "react-native";
+import { Animated, useColorScheme } from "react-native";
 import { typography } from "../styles/theme";
 import { useThemeColors } from "../hooks/useThemeColors";
+import useTabSwipeNavigation from "../hooks/useTabSwipeNavigation";
 import { AppContext } from "../context/AppContext";
 import SplashScreen from "../screens/Splash/SplashScreen";
 import LoginScreen from "../screens/Auth/LoginScreen";
@@ -22,11 +23,14 @@ import SettingsScreen from "../screens/Settings/SettingsScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+const TAB_ROUTE_ORDER = ["TabHome", "TabAccount", "TabSettings"];
 
 const HomeStack = () => (
   <Stack.Navigator
     screenOptions={{
       headerShown: false,
+      gestureEnabled: true,
+      fullScreenGestureEnabled: true,
     }}
   >
     <Stack.Screen name="Home" component={HomeScreen} />
@@ -36,11 +40,28 @@ const HomeStack = () => (
   </Stack.Navigator>
 );
 
+const withTabSwipe = (Component) => {
+  const SwipeableComponent = (props) => {
+    const { panHandlers, animatedStyle } = useTabSwipeNavigation(TAB_ROUTE_ORDER);
+
+    return (
+      <Animated.View style={[{ flex: 1 }, animatedStyle]} {...panHandlers}>
+        <Component {...props} />
+      </Animated.View>
+    );
+  };
+
+  return SwipeableComponent;
+};
+
+const HomeTabScreen = withTabSwipe(HomeStack);
+const AccountTabScreen = withTabSwipe(AccountScreen);
+const SettingsTabScreen = withTabSwipe(SettingsScreen);
+
 const MainTabs = () => {
   const insets = useSafeAreaInsets();
   const bottomPadding = Math.max(insets.bottom, 12);
   const theme = useThemeColors();
-
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -62,9 +83,9 @@ const MainTabs = () => {
         tabBarLabelStyle: { fontFamily: typography.fonts.body, fontSize: 12 },
       })}
     >
-      <Tab.Screen name="TabHome" component={HomeStack} options={{ tabBarLabel: "Home" }} />
-      <Tab.Screen name="TabAccount" component={AccountScreen} options={{ tabBarLabel: "Conta" }} />
-      <Tab.Screen name="TabSettings" component={SettingsScreen} options={{ tabBarLabel: "Config" }} />
+      <Tab.Screen name="TabHome" component={HomeTabScreen} options={{ tabBarLabel: "Home" }} />
+      <Tab.Screen name="TabAccount" component={AccountTabScreen} options={{ tabBarLabel: "Conta" }} />
+      <Tab.Screen name="TabSettings" component={SettingsTabScreen} options={{ tabBarLabel: "Config" }} />
     </Tab.Navigator>
   );
 };
@@ -98,6 +119,8 @@ const AppNavigator = () => {
           initialRouteName="Splash"
           screenOptions={{
             headerShown: false,
+            gestureEnabled: true,
+            fullScreenGestureEnabled: true,
           }}
         >
           <Stack.Screen name="Splash" component={SplashScreen} />
