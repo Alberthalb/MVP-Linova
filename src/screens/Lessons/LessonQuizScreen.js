@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import CustomButton from "../../components/CustomButton";
 import { colors, spacing, typography, radius } from "../../styles/theme";
+import { Feather } from "@expo/vector-icons";
 
 const QUESTIONS = [
   {
@@ -73,8 +74,12 @@ const LessonQuizScreen = ({ navigation, route }) => {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
+    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <View style={styles.container}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+          <Feather name="chevron-left" size={20} color={colors.primary} />
+          <Text style={styles.backButtonText}>Voltar</Text>
+        </TouchableOpacity>
         <View style={styles.hero}>
           <Text style={styles.heading}>Quiz: {lessonTitle}</Text>
           <Text style={styles.progress}>
@@ -115,8 +120,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     paddingHorizontal: spacing.layout,
-    paddingVertical: spacing.layout,
+    paddingBottom: spacing.layout,
+    paddingTop: spacing.md,
     gap: spacing.md,
+  },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  backButtonText: {
+    color: colors.primary,
+    fontFamily: typography.fonts.body,
+    fontWeight: "600",
   },
   hero: {
     gap: spacing.xs,

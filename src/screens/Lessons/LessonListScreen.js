@@ -34,7 +34,11 @@ const LessonListScreen = ({ navigation }) => {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "left", "right", "bottom"]}>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+          <Feather name="chevron-left" size={20} color={colors.primary} />
+          <Text style={styles.backButtonText}>Voltar</Text>
+        </TouchableOpacity>
         <View style={styles.header}>
           <View>
             <Text style={styles.heading}>Aulas disponiveis</Text>
@@ -85,8 +89,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     paddingHorizontal: spacing.layout,
-    paddingTop: spacing.layout,
-    paddingBottom: spacing.layout,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
   },
   heading: {
     fontSize: typography.heading,
@@ -102,6 +106,17 @@ const styles = StyleSheet.create({
   },
   header: {
     gap: spacing.xs,
+  },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  backButtonText: {
+    color: colors.primary,
+    fontFamily: typography.fonts.body,
+    fontWeight: "600",
   },
   list: {
     gap: spacing.md,

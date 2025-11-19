@@ -1,4 +1,4 @@
-import { useMemo, useRef, useCallback } from "react";
+import { useMemo, useRef, useCallback, useEffect } from "react";
 import { Animated, Dimensions, Easing, PanResponder } from "react-native";
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import { consumeTabInitialOffset, setTabInitialOffset } from "../utils/tabSwipeTransition";
@@ -11,11 +11,15 @@ const TRANSLATE_DAMPING = 0.35;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const ENTER_DURATION = 220;
 
-const useTabSwipeNavigation = (tabOrder = []) => {
+const useTabSwipeNavigation = (tabOrder = [], swipeEnabled = true) => {
   const navigation = useNavigation();
   const route = useRoute();
   const translateX = useRef(new Animated.Value(0)).current;
   const isAnimating = useRef(false);
+
+  useEffect(() => {
+    if (!swipeEnabled) translateX.setValue(0);
+  }, [swipeEnabled, translateX]);
 
   useFocusEffect(
     useCallback(() => {
@@ -49,7 +53,7 @@ const useTabSwipeNavigation = (tabOrder = []) => {
 
   const animateAndNavigate = useCallback(
     (direction, targetRoute) => {
-      if (!targetRoute) return;
+      if (!targetRoute || !swipeEnabled) return;
       isAnimating.current = true;
       const enterFrom = direction === "next" ? SCREEN_WIDTH : -SCREEN_WIDTH;
       const momentum = direction === "next" ? -MAX_TRANSLATE : MAX_TRANSLATE;
@@ -70,11 +74,11 @@ const useTabSwipeNavigation = (tabOrder = []) => {
         isAnimating.current = false;
       }, ENTER_DURATION + 40);
     },
-    [navigation, translateX]
+    [navigation, swipeEnabled, translateX]
   );
 
   const panResponder = useMemo(() => {
-    if (tabOrder.length === 0) return null;
+    if (tabOrder.length === 0 || !swipeEnabled) return null;
 
     return PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) =>
@@ -113,14 +117,14 @@ const useTabSwipeNavigation = (tabOrder = []) => {
       },
       onPanResponderTerminate: resetPosition,
     });
-  }, [animateAndNavigate, resetPosition, route.name, tabOrder, translateX]);
+  }, [animateAndNavigate, resetPosition, route.name, swipeEnabled, tabOrder, translateX]);
 
   const panHandlers = panResponder ? panResponder.panHandlers : {};
 
   return {
     panHandlers,
     animatedStyle: {
-      transform: [{ translateX }],
+      transform: [{ translateX: swipeEnabled ? translateX : 0 }],
     },
   };
 };

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, useNavigationState } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
@@ -42,10 +42,22 @@ const HomeStack = () => (
 
 const withTabSwipe = (Component) => {
   const SwipeableComponent = (props) => {
-    const { panHandlers, animatedStyle } = useTabSwipeNavigation(TAB_ROUTE_ORDER);
+    const theme = useThemeColors();
+    const navigationState = useNavigationState((state) => state);
+    const isHomeTab = props.route?.name === "TabHome";
+    let swipeEnabled = true;
+
+    if (isHomeTab) {
+      const homeRoute = navigationState?.routes?.find((route) => route.key === props.route?.key);
+      const stackState = homeRoute?.state;
+      const isAtRoot = !stackState || stackState.index === 0;
+      swipeEnabled = isAtRoot;
+    }
+
+    const { panHandlers, animatedStyle } = useTabSwipeNavigation(TAB_ROUTE_ORDER, swipeEnabled);
 
     return (
-      <Animated.View style={[{ flex: 1 }, animatedStyle]} {...panHandlers}>
+      <Animated.View style={[{ flex: 1, backgroundColor: theme.background }, animatedStyle]} {...panHandlers}>
         <Component {...props} />
       </Animated.View>
     );

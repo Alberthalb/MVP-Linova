@@ -15,8 +15,12 @@ const LessonScreen = ({ route, navigation }) => {
   const [showSubtitles, setShowSubtitles] = useState(true);
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
+    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+          <Feather name="chevron-left" size={20} color={colors.primary} />
+          <Text style={styles.backButtonText}>Voltar</Text>
+        </TouchableOpacity>
         <View style={styles.header}>
           <View>
             <Text style={styles.heading}>{lesson?.title || "Aula"}</Text>
@@ -63,8 +67,20 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.layout,
-    paddingVertical: spacing.layout,
+    paddingBottom: spacing.layout,
+    paddingTop: spacing.md,
     gap: spacing.md,
+  },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  backButtonText: {
+    color: colors.primary,
+    fontFamily: typography.fonts.body,
+    fontWeight: "600",
   },
   heading: {
     fontSize: typography.heading + 2,

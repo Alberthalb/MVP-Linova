@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useState } from "react";
-import { View, Text, StyleSheet, TextInput, Switch, Alert, FlatList, TouchableOpacity, ScrollView } from "react-native";
+import { View, Text, StyleSheet, TextInput, Switch, Alert, TouchableOpacity, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
@@ -63,18 +63,8 @@ const AccountScreen = () => {
     ]);
   };
 
-  const renderProgressItem = ({ item }) => (
-    <View style={styles.progressItem}>
-      <View style={{ gap: spacing.xs }}>
-        <Text style={styles.progressTitle}>{item.title}</Text>
-        <Text style={styles.progressScore}>Score: {item.score}%</Text>
-      </View>
-      <Feather name="check-circle" size={20} color={colors.primary} />
-    </View>
-  );
-
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
+    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.heading}>Conta</Text>
         <Text style={styles.subheading}>Gerencie seu perfil, preferências e progresso.</Text>
@@ -120,7 +110,15 @@ const AccountScreen = () => {
           {progress.length === 0 ? (
             <Text style={styles.empty}>Nenhum quiz salvo ainda.</Text>
           ) : (
-            <FlatList data={progress} renderItem={renderProgressItem} keyExtractor={(item) => item.id.toString()} />
+            progress.map((item) => (
+              <View key={item.id} style={styles.progressItem}>
+                <View style={{ gap: spacing.xs }}>
+                  <Text style={styles.progressTitle}>{item.title}</Text>
+                  <Text style={styles.progressScore}>Score: {item.score}%</Text>
+                </View>
+                <Feather name="check-circle" size={20} color={colors.primary} />
+              </View>
+            ))
           )}
           <TouchableOpacity style={styles.linkButton} onPress={handleClearProgress}>
             <Text style={styles.linkButtonText}>Limpar progresso</Text>
@@ -156,8 +154,8 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     paddingHorizontal: spacing.layout,
-    paddingVertical: spacing.layout,
-    paddingBottom: spacing.layout * 1.5,
+    paddingTop: spacing.layout,
+    paddingBottom: spacing.md,
     gap: spacing.lg,
   },
   heading: {
