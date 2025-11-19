@@ -3,8 +3,9 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import CustomButton from "../../components/CustomButton";
 import { AppContext } from "../../context/AppContext";
-import { colors, spacing, typography, radius } from "../../styles/theme";
+import { spacing, typography, radius } from "../../styles/theme";
 import { getDisplayName } from "../../utils/userName";
+import { useThemeColors } from "../../hooks/useThemeColors";
 
 const QUESTIONS = [
   {
@@ -58,6 +59,8 @@ const LevelQuizScreen = ({ navigation }) => {
   const { setLevel, userName } = useContext(AppContext);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
+  const theme = useThemeColors();
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const question = useMemo(() => QUESTIONS[step], [step]);
   const totalSteps = QUESTIONS.length;
@@ -127,84 +130,85 @@ const LevelQuizScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.layout,
-    paddingVertical: spacing.layout,
-    gap: spacing.md,
-  },
-  hero: {
-    gap: spacing.xs,
-  },
-  title: {
-    fontSize: typography.heading + 2,
-    fontWeight: "700",
-    color: colors.primary,
-    fontFamily: typography.fonts.heading,
-  },
-  progress: {
-    fontSize: typography.body,
-    color: colors.muted,
-    fontFamily: typography.fonts.body,
-  },
-  subtitle: {
-    fontSize: typography.body,
-    color: colors.muted,
-    fontFamily: typography.fonts.body,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    gap: spacing.md,
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  question: {
-    fontSize: typography.subheading + 2,
-    fontWeight: "600",
-    color: colors.text,
-    fontFamily: typography.fonts.heading,
-  },
-  option: {
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.gray,
-  },
-  optionSelected: {
-    backgroundColor: colors.primary,
-  },
-  optionText: {
-    fontSize: typography.body,
-    color: colors.text,
-    fontFamily: typography.fonts.body,
-  },
-  optionSelectedText: {
-    color: colors.background,
-    fontWeight: "700",
-    fontFamily: typography.fonts.heading,
-  },
-  button: {
-    marginTop: spacing.sm,
-  },
-  progressBar: {
-    height: 10,
-    backgroundColor: colors.gray,
-    borderRadius: radius.md,
-    overflow: "hidden",
-    marginBottom: spacing.md,
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: colors.primary,
-  },
-});
+const createStyles = (colors) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      paddingHorizontal: spacing.layout,
+      paddingVertical: spacing.layout,
+      gap: spacing.md,
+    },
+    hero: {
+      gap: spacing.xs,
+    },
+    title: {
+      fontSize: typography.heading + 2,
+      fontWeight: "700",
+      color: colors.primary,
+      fontFamily: typography.fonts.heading,
+    },
+    progress: {
+      fontSize: typography.body,
+      color: colors.muted,
+      fontFamily: typography.fonts.body,
+    },
+    subtitle: {
+      fontSize: typography.body,
+      color: colors.muted,
+      fontFamily: typography.fonts.body,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.md,
+      padding: spacing.lg,
+      gap: spacing.md,
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    question: {
+      fontSize: typography.subheading + 2,
+      fontWeight: "600",
+      color: colors.text,
+      fontFamily: typography.fonts.heading,
+    },
+    option: {
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.gray,
+    },
+    optionSelected: {
+      backgroundColor: colors.primary,
+    },
+    optionText: {
+      fontSize: typography.body,
+      color: colors.text,
+      fontFamily: typography.fonts.body,
+    },
+    optionSelectedText: {
+      color: colors.background,
+      fontWeight: "700",
+      fontFamily: typography.fonts.heading,
+    },
+    button: {
+      marginTop: spacing.sm,
+    },
+    progressBar: {
+      height: 10,
+      backgroundColor: colors.gray,
+      borderRadius: radius.md,
+      overflow: "hidden",
+      marginBottom: spacing.md,
+    },
+    progressFill: {
+      height: "100%",
+      backgroundColor: colors.primary,
+    },
+  });
 
 export default LevelQuizScreen;

@@ -1,12 +1,13 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, TextInput, Switch, Alert, TouchableOpacity, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 import CustomButton from "../../components/CustomButton";
 import { AppContext } from "../../context/AppContext";
-import { colors, spacing, typography, radius } from "../../styles/theme";
+import { spacing, typography, radius } from "../../styles/theme";
 import { getDisplayName } from "../../utils/userName";
+import { useThemeColors } from "../../hooks/useThemeColors";
 
 const STORAGE_KEY = "@linova:lessonProgress";
 
@@ -17,6 +18,8 @@ const AccountScreen = () => {
   const [notifications, setNotifications] = useState(true);
   const [autoSubs, setAutoSubs] = useState(true);
   const [progress, setProgress] = useState([]);
+  const theme = useThemeColors();
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   useEffect(() => {
     loadProgress();
@@ -72,7 +75,7 @@ const AccountScreen = () => {
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>Perfil</Text>
-            <Feather name="user" size={16} color={colors.primary} />
+            <Feather name="user" size={16} color={theme.primary} />
           </View>
           <Text style={styles.label}>Nome</Text>
           <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Seu nome" />
@@ -84,28 +87,28 @@ const AccountScreen = () => {
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>Preferências</Text>
-            <Feather name="sliders" size={16} color={colors.primary} />
+            <Feather name="sliders" size={16} color={theme.primary} />
           </View>
           <View style={styles.row}>
             <View style={styles.rowText}>
               <Text style={styles.prefTitle}>Notificações</Text>
               <Text style={styles.prefSubtitle}>Lembretes e novidades{'\n'}(em desenvolvimento)</Text>
             </View>
-            <Switch value={notifications} onValueChange={setNotifications} trackColor={{ true: colors.primary }} />
+            <Switch value={notifications} onValueChange={setNotifications} trackColor={{ true: theme.primary }} />
           </View>
           <View style={styles.row}>
             <View style={styles.rowText}>
               <Text style={styles.prefTitle}>Legendas automáticas</Text>
               <Text style={styles.prefSubtitle}>Ativar ao iniciar os vídeos</Text>
             </View>
-            <Switch value={autoSubs} onValueChange={setAutoSubs} trackColor={{ true: colors.primary }} />
+            <Switch value={autoSubs} onValueChange={setAutoSubs} trackColor={{ true: theme.primary }} />
           </View>
         </View>
 
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>Progresso</Text>
-            <Feather name="bar-chart-2" size={16} color={colors.primary} />
+            <Feather name="bar-chart-2" size={16} color={theme.primary} />
           </View>
           {progress.length === 0 ? (
             <Text style={styles.empty}>Nenhum quiz salvo ainda.</Text>
@@ -116,7 +119,7 @@ const AccountScreen = () => {
                   <Text style={styles.progressTitle}>{item.title}</Text>
                   <Text style={styles.progressScore}>Score: {item.score}%</Text>
                 </View>
-                <Feather name="check-circle" size={20} color={colors.primary} />
+                <Feather name="check-circle" size={20} color={theme.primary} />
               </View>
             ))
           )}
@@ -128,7 +131,7 @@ const AccountScreen = () => {
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>Nível atual</Text>
-            <Feather name="award" size={16} color={colors.primary} />
+            <Feather name="award" size={16} color={theme.primary} />
           </View>
           <Text style={styles.levelValue}>{level || "Não definido"}</Text>
           <TouchableOpacity
@@ -146,117 +149,118 @@ const AccountScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  container: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.layout,
-    paddingTop: spacing.layout,
-    paddingBottom: spacing.md,
-    gap: spacing.lg,
-  },
-  heading: {
-    fontSize: typography.heading + 2,
-    fontFamily: typography.fonts.heading,
-    color: colors.primary,
-  },
-  subheading: {
-    fontSize: typography.body,
-    fontFamily: typography.fonts.body,
-    color: colors.muted,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.md,
-    shadowColor: colors.cardShadow,
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  cardTitle: {
-    fontSize: typography.subheading + 1,
-    fontWeight: "700",
-    color: colors.text,
-    fontFamily: typography.fonts.heading,
-  },
-  label: {
-    color: colors.muted,
-    fontFamily: typography.fonts.body,
-    fontWeight: "600",
-  },
-  input: {
-    backgroundColor: colors.gray,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    fontSize: typography.body,
-    color: colors.text,
-    fontFamily: typography.fonts.body,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: spacing.xs,
-    gap: spacing.md,
-  },
-  rowText: {
-    flex: 1,
-  },
-  prefTitle: {
-    fontSize: typography.body,
-    fontWeight: "700",
-    color: colors.text,
-    fontFamily: typography.fonts.body,
-  },
-  prefSubtitle: {
-    color: colors.muted,
-    fontFamily: typography.fonts.body,
-  },
-  empty: {
-    color: colors.muted,
-    fontFamily: typography.fonts.body,
-  },
-  progressItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: spacing.xs,
-  },
-  progressTitle: {
-    fontFamily: typography.fonts.body,
-    color: colors.text,
-    fontWeight: "600",
-  },
-  progressScore: {
-    color: colors.muted,
-    fontFamily: typography.fonts.body,
-  },
-  linkButton: {
-    paddingVertical: spacing.xs,
-  },
-  linkButtonText: {
-    color: colors.primary,
-    fontFamily: typography.fonts.body,
-    fontWeight: "700",
-  },
-  levelValue: {
-    fontSize: typography.subheading + 2,
-    fontWeight: "700",
-    color: colors.text,
-    fontFamily: typography.fonts.heading,
-  },
-});
+const createStyles = (colors) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flexGrow: 1,
+      paddingHorizontal: spacing.layout,
+      paddingTop: spacing.layout,
+      paddingBottom: spacing.md,
+      gap: spacing.lg,
+    },
+    heading: {
+      fontSize: typography.heading + 2,
+      fontFamily: typography.fonts.heading,
+      color: colors.primary,
+    },
+    subheading: {
+      fontSize: typography.body,
+      fontFamily: typography.fonts.body,
+      color: colors.muted,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      padding: spacing.lg,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      gap: spacing.md,
+      shadowColor: colors.cardShadow,
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    cardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    cardTitle: {
+      fontSize: typography.subheading + 1,
+      fontWeight: "700",
+      color: colors.text,
+      fontFamily: typography.fonts.heading,
+    },
+    label: {
+      color: colors.muted,
+      fontFamily: typography.fonts.body,
+      fontWeight: "600",
+    },
+    input: {
+      backgroundColor: colors.gray,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      fontSize: typography.body,
+      color: colors.text,
+      fontFamily: typography.fonts.body,
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingVertical: spacing.xs,
+      gap: spacing.md,
+    },
+    rowText: {
+      flex: 1,
+    },
+    prefTitle: {
+      fontSize: typography.body,
+      fontWeight: "700",
+      color: colors.text,
+      fontFamily: typography.fonts.body,
+    },
+    prefSubtitle: {
+      color: colors.muted,
+      fontFamily: typography.fonts.body,
+    },
+    empty: {
+      color: colors.muted,
+      fontFamily: typography.fonts.body,
+    },
+    progressItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingVertical: spacing.xs,
+    },
+    progressTitle: {
+      fontFamily: typography.fonts.body,
+      color: colors.text,
+      fontWeight: "600",
+    },
+    progressScore: {
+      color: colors.muted,
+      fontFamily: typography.fonts.body,
+    },
+    linkButton: {
+      paddingVertical: spacing.xs,
+    },
+    linkButtonText: {
+      color: colors.primary,
+      fontFamily: typography.fonts.body,
+      fontWeight: "700",
+    },
+    levelValue: {
+      fontSize: typography.subheading + 2,
+      fontWeight: "700",
+      color: colors.text,
+      fontFamily: typography.fonts.heading,
+    },
+  });
 
 export default AccountScreen;
