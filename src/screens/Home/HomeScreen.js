@@ -78,11 +78,11 @@ const HomeScreen = ({ navigation }) => {
           <Text style={styles.subtitle}>Continue de onde parou e desbloqueie novas aulas.</Text>
           <View style={styles.heroActions}>
             <TouchableOpacity style={styles.heroChip} activeOpacity={0.9} onPress={() => navigation.navigate("LessonList")}>
-              <Feather name="book-open" size={16} color={theme.background} />
+              <Feather name="book-open" size={16} color="#FFFFFF" />
               <Text style={styles.heroChipText}>Aulas</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.heroChip, styles.heroChipGhost]} activeOpacity={0.9} onPress={handleIaInDevelopment}>
-              <Feather name="message-circle" size={16} color={theme.background} />
+              <Feather name="message-circle" size={16} color="#FFFFFF" />
               <Text style={styles.heroChipText}>IA em breve</Text>
             </TouchableOpacity>
           </View>
@@ -217,7 +217,7 @@ const createStyles = (colors) =>
       backgroundColor: "rgba(255,255,255,0.1)",
     },
     heroChipText: {
-      color: colors.background,
+      color: "#FFFFFF",
       fontFamily: typography.fonts.body,
       fontWeight: "600",
     },
