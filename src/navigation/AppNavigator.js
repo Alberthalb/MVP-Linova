@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from "react";
-import { NavigationContainer, useNavigationState } from "@react-navigation/native";
+import { NavigationContainer, useNavigationState, DefaultTheme, DarkTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Animated, useColorScheme } from "react-native";
-import { typography } from "../styles/theme";
+import { Animated, useColorScheme, StatusBar } from "react-native";
+import { typography, lightColors, darkColors } from "../styles/theme";
 import { useThemeColors } from "../hooks/useThemeColors";
 import useTabSwipeNavigation from "../hooks/useTabSwipeNavigation";
 import { AppContext } from "../context/AppContext";
@@ -126,6 +126,7 @@ const AppNavigator = () => {
   const [darkMode, setDarkMode] = useState(null);
   const systemScheme = useColorScheme();
   const isDark = darkMode === null ? systemScheme === "dark" : darkMode;
+  const palette = isDark ? darkColors : lightColors;
 
   const contextValue = useMemo(
     () => ({
@@ -137,13 +138,30 @@ const AppNavigator = () => {
       setUserEmail,
       darkMode,
       setDarkMode,
+      isDarkMode: isDark,
     }),
-    [level, userName, userEmail, darkMode]
+    [level, userName, userEmail, darkMode, isDark]
   );
+
+  const navigationTheme = useMemo(() => {
+    const base = isDark ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        background: palette.background,
+        card: palette.surface,
+        border: palette.border,
+        text: palette.text,
+        primary: palette.primary,
+      },
+    };
+  }, [isDark, palette]);
 
   return (
     <AppContext.Provider value={contextValue}>
-      <NavigationContainer>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={palette.background} />
+      <NavigationContainer theme={navigationTheme}>
         <Stack.Navigator
           initialRouteName="Splash"
           screenOptions={{

@@ -9,4 +9,5 @@ export const AppContext = createContext({
   setUserEmail: () => {},
   darkMode: null,
   setDarkMode: () => {},
+  isDarkMode: false,
 });

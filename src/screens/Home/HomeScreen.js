@@ -6,14 +6,15 @@ import CustomButton from "../../components/CustomButton";
 import { AppContext } from "../../context/AppContext";
 import { spacing, typography, radius } from "../../styles/theme";
 import { getDisplayName } from "../../utils/userName";
-import { useThemeColors } from "../../hooks/useThemeColors";
+import { useThemeColors, useIsDarkMode } from "../../hooks/useThemeColors";
 
 const HomeScreen = ({ navigation }) => {
-  const { level, userName, darkMode, setDarkMode } = useContext(AppContext);
+  const { level, userName, setDarkMode } = useContext(AppContext);
   const displayName = getDisplayName(userName, null, "Linova");
   const [isIaModalVisible, setIaModalVisible] = useState(false);
   const [statInfo, setStatInfo] = useState(null);
   const theme = useThemeColors();
+  const isDarkMode = useIsDarkMode();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const mockStats = {
     days: 21,
@@ -33,6 +34,15 @@ const HomeScreen = ({ navigation }) => {
     setStatInfo(messages[type]);
   };
 
+  const handleThemeToggle = () => {
+    setDarkMode((prev) => {
+      if (prev === null) {
+        return !isDarkMode;
+      }
+      return !prev;
+    });
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
       <View style={styles.container}>
@@ -49,8 +59,8 @@ const HomeScreen = ({ navigation }) => {
             <Feather name="check-circle" size={14} color="#FFB347" />
             <Text style={styles.statText}>{mockStats.activities}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.themeButton} onPress={() => setDarkMode((prev) => !prev)} activeOpacity={0.8}>
-            <Feather name={darkMode ? "sun" : "moon"} size={16} color={theme.text} />
+          <TouchableOpacity style={styles.themeButton} onPress={handleThemeToggle} activeOpacity={0.8}>
+            <Feather name={isDarkMode ? "sun" : "moon"} size={16} color={theme.text} />
           </TouchableOpacity>
         </View>
 
