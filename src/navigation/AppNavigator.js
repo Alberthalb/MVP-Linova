@@ -102,6 +102,7 @@ const MainTabs = () => {
           paddingTop: 10,
           borderTopWidth: 0.5,
           borderTopColor: theme.border,
+          backgroundColor: theme.surface,
         },
         tabBarIcon: ({ color, size }) => {
           if (route.name === "TabHome") return <Feather name="home" size={size} color={color} />;

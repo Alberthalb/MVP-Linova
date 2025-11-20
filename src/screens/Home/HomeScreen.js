@@ -147,12 +147,12 @@ const createStyles = (colors) =>
     welcome: {
       fontSize: typography.heading + 2,
       fontWeight: "700",
-      color: colors.background,
+      color: "#FFFFFF",
       fontFamily: typography.fonts.heading,
     },
     subtitle: {
       fontSize: typography.body,
-      color: colors.textSecondary,
+      color: "#FFFFFF",
       fontFamily: typography.fonts.body,
       marginTop: spacing.xs,
     },

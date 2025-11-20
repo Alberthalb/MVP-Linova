@@ -1,5 +1,5 @@
 import React, { useContext, useMemo, useState } from "react";
-import { View, Text, StyleSheet, TextInput, Switch, Alert, TouchableOpacity, ScrollView } from "react-native";
+import { View, Text, StyleSheet, TextInput, Switch, Alert, TouchableOpacity, ScrollView, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import CustomButton from "../../components/CustomButton";
@@ -16,12 +16,22 @@ const AccountScreen = ({ navigation }) => {
   const [email, setEmail] = useState(userEmail || "");
   const [notifications, setNotifications] = useState(true);
   const [autoSubs, setAutoSubs] = useState(true);
+  const [statInfo, setStatInfo] = useState(null);
 
   const handleSaveProfile = () => {
     const display = getDisplayName(name, email, userName);
     setUserName(display);
     setUserEmail(email);
     Alert.alert("Perfil atualizado", "Seu nome e email foram atualizados (em desenvolvimento).");
+  };
+
+  const handleSummaryPress = (type) => {
+    const messages = {
+      days: "Dias consecutivos aprendendo com a Linova.",
+      lessons: "Total de aulas assistidas nesta semana.",
+      activities: "Atividades praticas concluidas no app.",
+    };
+    setStatInfo(messages[type]);
   };
 
   return (
@@ -86,18 +96,18 @@ const AccountScreen = ({ navigation }) => {
             <Feather name="activity" size={16} color={theme.primary} />
           </View>
           <View style={styles.summaryRow}>
-            <View style={[styles.summaryTile, { borderColor: "#FF6B5C" }]}>
+            <TouchableOpacity style={[styles.summaryTile, { borderColor: "#FF6B5C" }]} activeOpacity={0.85} onPress={() => handleSummaryPress("days")}>
               <Feather name="calendar" size={16} color="#FF6B5C" />
               <Text style={styles.summaryValue}>21 dias</Text>
-            </View>
-            <View style={[styles.summaryTile, { borderColor: "#3D7FFC" }]}>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.summaryTile, { borderColor: "#3D7FFC" }]} activeOpacity={0.85} onPress={() => handleSummaryPress("lessons")}>
               <Feather name="book" size={16} color="#3D7FFC" />
               <Text style={styles.summaryValue}>5 aulas</Text>
-            </View>
-            <View style={[styles.summaryTile, { borderColor: "#FFB347" }]}>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.summaryTile, { borderColor: "#FFB347" }]} activeOpacity={0.85} onPress={() => handleSummaryPress("activities")}>
               <Feather name="check-circle" size={16} color="#FFB347" />
               <Text style={styles.summaryValue}>14 atividades</Text>
-            </View>
+            </TouchableOpacity>
           </View>
           <Text style={styles.summaryHint}>Esses números refletem seu uso recente e ajudam a acompanhar seu progresso.</Text>
         </View>
@@ -105,6 +115,17 @@ const AccountScreen = ({ navigation }) => {
         <CustomButton title="Alterar senha" variant="ghost" onPress={() => navigation.navigate("ChangePassword")} />
         <CustomButton title="Sair da conta" variant="ghost" onPress={() => Alert.alert("Logout", "Seu login será encerrado (em desenvolvimento).")} />
       </ScrollView>
+      <Modal transparent animationType="fade" visible={!!statInfo} onRequestClose={() => setStatInfo(null)} statusBarTranslucent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Seu progresso</Text>
+            <Text style={styles.modalText}>{statInfo}</Text>
+            <TouchableOpacity style={styles.modalButton} activeOpacity={0.8} onPress={() => setStatInfo(null)}>
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -225,6 +246,44 @@ const createStyles = (colors) =>
       color: colors.muted,
       fontFamily: typography.fonts.body,
       fontSize: typography.small,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacing.lg,
+    },
+    modalCard: {
+      width: "100%",
+      backgroundColor: colors.surface,
+      borderRadius: radius.md,
+      padding: spacing.lg,
+      gap: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    modalTitle: {
+      fontFamily: typography.fonts.heading,
+      fontSize: typography.subheading,
+      color: colors.text,
+      fontWeight: "700",
+    },
+    modalText: {
+      fontFamily: typography.fonts.body,
+      fontSize: typography.body,
+      color: colors.muted,
+    },
+    modalButton: {
+      alignSelf: "flex-end",
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+    },
+    modalButtonText: {
+      color: colors.primary,
+      fontSize: typography.body,
+      fontFamily: typography.fonts.body,
+      fontWeight: "700",
     },
   });
 
