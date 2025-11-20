@@ -1,7 +1,6 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, { useContext, useMemo, useState } from "react";
 import { View, Text, StyleSheet, TextInput, Switch, Alert, TouchableOpacity, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 import CustomButton from "../../components/CustomButton";
 import { AppContext } from "../../context/AppContext";
@@ -9,40 +8,14 @@ import { spacing, typography, radius } from "../../styles/theme";
 import { getDisplayName } from "../../utils/userName";
 import { useThemeColors } from "../../hooks/useThemeColors";
 
-const STORAGE_KEY = "@linova:lessonProgress";
-
-const AccountScreen = () => {
+const AccountScreen = ({ navigation }) => {
   const { userName, setUserName, userEmail, setUserEmail, level, setLevel } = useContext(AppContext);
+  const theme = useThemeColors();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [name, setName] = useState(userName || "");
   const [email, setEmail] = useState(userEmail || "");
   const [notifications, setNotifications] = useState(true);
   const [autoSubs, setAutoSubs] = useState(true);
-  const [progress, setProgress] = useState([]);
-  const theme = useThemeColors();
-  const styles = useMemo(() => createStyles(theme), [theme]);
-
-  useEffect(() => {
-    loadProgress();
-  }, []);
-
-  const loadProgress = async () => {
-    try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      if (!stored) {
-        setProgress([]);
-        return;
-      }
-      const parsed = JSON.parse(stored);
-      const list = Object.keys(parsed).map((id) => ({
-        id,
-        title: parsed[id].lessonTitle || `Aula ${id}`,
-        score: parsed[id].score,
-      }));
-      setProgress(list);
-    } catch {
-      setProgress([]);
-    }
-  };
 
   const handleSaveProfile = () => {
     const display = getDisplayName(name, email, userName);
@@ -51,26 +24,11 @@ const AccountScreen = () => {
     Alert.alert("Perfil atualizado", "Seu nome e email foram atualizados (em desenvolvimento).");
   };
 
-  const handleClearProgress = async () => {
-    Alert.alert("Limpar progresso", "Deseja apagar os resultados dos quizzes?", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Apagar",
-        style: "destructive",
-        onPress: async () => {
-          await AsyncStorage.removeItem(STORAGE_KEY);
-          setProgress([]);
-          Alert.alert("Pronto", "Progresso local apagado.");
-        },
-      },
-    ]);
-  };
-
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.heading}>Conta</Text>
-        <Text style={styles.subheading}>Gerencie seu perfil, preferências e progresso.</Text>
+        <Text style={styles.subheading}>Gerencie seu perfil, preferências e resumo.</Text>
 
         <View style={styles.card}>
           <View style={styles.cardHeader}>
@@ -92,7 +50,7 @@ const AccountScreen = () => {
           <View style={styles.row}>
             <View style={styles.rowText}>
               <Text style={styles.prefTitle}>Notificações</Text>
-              <Text style={styles.prefSubtitle}>Lembretes e novidades{'\n'}(em desenvolvimento)</Text>
+              <Text style={styles.prefSubtitle}>Lembretes e novidades{"\n"}(em desenvolvimento)</Text>
             </View>
             <Switch value={notifications} onValueChange={setNotifications} trackColor={{ true: theme.primary }} />
           </View>
@@ -103,29 +61,6 @@ const AccountScreen = () => {
             </View>
             <Switch value={autoSubs} onValueChange={setAutoSubs} trackColor={{ true: theme.primary }} />
           </View>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Progresso</Text>
-            <Feather name="bar-chart-2" size={16} color={theme.primary} />
-          </View>
-          {progress.length === 0 ? (
-            <Text style={styles.empty}>Nenhum quiz salvo ainda.</Text>
-          ) : (
-            progress.map((item) => (
-              <View key={item.id} style={styles.progressItem}>
-                <View style={{ gap: spacing.xs }}>
-                  <Text style={styles.progressTitle}>{item.title}</Text>
-                  <Text style={styles.progressScore}>Score: {item.score}%</Text>
-                </View>
-                <Feather name="check-circle" size={20} color={theme.primary} />
-              </View>
-            ))
-          )}
-          <TouchableOpacity style={styles.linkButton} onPress={handleClearProgress}>
-            <Text style={styles.linkButtonText}>Limpar progresso</Text>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.card}>
@@ -144,6 +79,31 @@ const AccountScreen = () => {
             <Text style={styles.linkButtonText}>Recalcular nível</Text>
           </TouchableOpacity>
         </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Resumo</Text>
+            <Feather name="activity" size={16} color={theme.primary} />
+          </View>
+          <View style={styles.summaryRow}>
+            <View style={[styles.summaryTile, { borderColor: "#FF6B5C" }]}>
+              <Feather name="calendar" size={16} color="#FF6B5C" />
+              <Text style={styles.summaryValue}>21 dias</Text>
+            </View>
+            <View style={[styles.summaryTile, { borderColor: "#3D7FFC" }]}>
+              <Feather name="book" size={16} color="#3D7FFC" />
+              <Text style={styles.summaryValue}>5 aulas</Text>
+            </View>
+            <View style={[styles.summaryTile, { borderColor: "#FFB347" }]}>
+              <Feather name="check-circle" size={16} color="#FFB347" />
+              <Text style={styles.summaryValue}>14 atividades</Text>
+            </View>
+          </View>
+          <Text style={styles.summaryHint}>Esses números refletem seu uso recente e ajudam a acompanhar seu progresso.</Text>
+        </View>
+
+        <CustomButton title="Alterar senha" variant="ghost" onPress={() => navigation.navigate("ChangePassword")} />
+        <CustomButton title="Sair da conta" variant="ghost" onPress={() => Alert.alert("Logout", "Seu login será encerrado (em desenvolvimento).")} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -228,24 +188,11 @@ const createStyles = (colors) =>
       color: colors.muted,
       fontFamily: typography.fonts.body,
     },
-    empty: {
-      color: colors.muted,
-      fontFamily: typography.fonts.body,
-    },
-    progressItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingVertical: spacing.xs,
-    },
-    progressTitle: {
-      fontFamily: typography.fonts.body,
+    levelValue: {
+      fontSize: typography.subheading + 2,
+      fontWeight: "700",
       color: colors.text,
-      fontWeight: "600",
-    },
-    progressScore: {
-      color: colors.muted,
-      fontFamily: typography.fonts.body,
+      fontFamily: typography.fonts.heading,
     },
     linkButton: {
       paddingVertical: spacing.xs,
@@ -255,11 +202,29 @@ const createStyles = (colors) =>
       fontFamily: typography.fonts.body,
       fontWeight: "700",
     },
-    levelValue: {
-      fontSize: typography.subheading + 2,
-      fontWeight: "700",
+    summaryRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: spacing.sm,
+    },
+    summaryTile: {
+      flex: 1,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      padding: spacing.sm,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    summaryValue: {
+      marginTop: spacing.xs,
+      fontFamily: typography.fonts.body,
+      fontWeight: "600",
       color: colors.text,
-      fontFamily: typography.fonts.heading,
+    },
+    summaryHint: {
+      color: colors.muted,
+      fontFamily: typography.fonts.body,
+      fontSize: typography.small,
     },
   });
 

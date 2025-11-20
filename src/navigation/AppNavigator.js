@@ -20,9 +20,11 @@ import LessonListScreen from "../screens/Lessons/LessonListScreen";
 import LessonScreen from "../screens/Lessons/LessonScreen";
 import LessonQuizScreen from "../screens/Lessons/LessonQuizScreen";
 import AccountScreen from "../screens/Account/AccountScreen";
+import ChangePasswordScreen from "../screens/Account/ChangePasswordScreen";
 import SettingsScreen from "../screens/Settings/SettingsScreen";
 
 const Stack = createNativeStackNavigator();
+const AccountStackNavigator = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 const TAB_ROUTE_ORDER = ["TabHome", "TabAccount", "TabSettings"];
 
@@ -67,8 +69,21 @@ const withTabSwipe = (Component) => {
   return SwipeableComponent;
 };
 
+const AccountStack = () => (
+  <AccountStackNavigator.Navigator
+    screenOptions={{
+      headerShown: false,
+      gestureEnabled: true,
+      fullScreenGestureEnabled: true,
+    }}
+  >
+    <AccountStackNavigator.Screen name="AccountMain" component={AccountScreen} />
+    <AccountStackNavigator.Screen name="ChangePassword" component={ChangePasswordScreen} />
+  </AccountStackNavigator.Navigator>
+);
+
 const HomeTabScreen = withTabSwipe(HomeStack);
-const AccountTabScreen = withTabSwipe(AccountScreen);
+const AccountTabScreen = withTabSwipe(AccountStack);
 const SettingsTabScreen = withTabSwipe(SettingsScreen);
 
 const MainTabs = () => {
