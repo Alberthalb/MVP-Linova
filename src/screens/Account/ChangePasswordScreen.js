@@ -1,29 +1,47 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { View, Text, StyleSheet, TextInput, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import CustomButton from "../../components/CustomButton";
 import { spacing, typography, radius } from "../../styles/theme";
 import { useThemeColors } from "../../hooks/useThemeColors";
+import { changePassword } from "../../services/authService";
+import { getFirebaseAuthErrorMessage } from "../../utils/firebaseErrorMessage";
 
 const ChangePasswordScreen = ({ navigation }) => {
   const theme = useThemeColors();
-  const styles = createStyles(theme);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
       Alert.alert("Campos obrigatórios", "Preencha todos os campos antes de continuar.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      Alert.alert("Senha muito curta", "A nova senha deve ter pelo menos 6 caracteres.");
       return;
     }
     if (newPassword !== confirmPassword) {
       Alert.alert("Senhas diferentes", "Confirme a nova senha corretamente.");
       return;
     }
-    Alert.alert("Senha atualizada", "Sua senha foi alterada (em desenvolvimento).", [
-      { text: "OK", onPress: () => navigation.goBack() },
-    ]);
+    setLoading(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      Alert.alert("Senha atualizada", "Sua senha foi alterada com sucesso.", [
+        { text: "OK", onPress: () => navigation.goBack() },
+      ]);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error) {
+      Alert.alert("Não foi possível alterar", getFirebaseAuthErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -33,12 +51,33 @@ const ChangePasswordScreen = ({ navigation }) => {
         <Text style={styles.subtitle}>Informe sua senha atual e crie uma nova senha.</Text>
         <View style={styles.card}>
           <Text style={styles.label}>Senha atual</Text>
-          <TextInput style={styles.input} secureTextEntry value={currentPassword} onChangeText={setCurrentPassword} placeholder="********" />
+          <TextInput
+            style={styles.input}
+            secureTextEntry
+            value={currentPassword}
+            onChangeText={setCurrentPassword}
+            placeholder="********"
+            autoCapitalize="none"
+          />
           <Text style={styles.label}>Nova senha</Text>
-          <TextInput style={styles.input} secureTextEntry value={newPassword} onChangeText={setNewPassword} placeholder="********" />
+          <TextInput
+            style={styles.input}
+            secureTextEntry
+            value={newPassword}
+            onChangeText={setNewPassword}
+            placeholder="********"
+            autoCapitalize="none"
+          />
           <Text style={styles.label}>Confirmar nova senha</Text>
-          <TextInput style={styles.input} secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} placeholder="********" />
-          <CustomButton title="Atualizar senha" onPress={handleChangePassword} />
+          <TextInput
+            style={styles.input}
+            secureTextEntry
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            placeholder="********"
+            autoCapitalize="none"
+          />
+          <CustomButton title="Atualizar senha" onPress={handleChangePassword} loading={loading} disabled={loading} />
         </View>
         <CustomButton title="Cancelar" variant="ghost" onPress={() => navigation.goBack()} />
       </View>

@@ -11,7 +11,7 @@ import { registerUser } from "../../services/authService";
 import { getFirebaseAuthErrorMessage } from "../../utils/firebaseErrorMessage";
 
 const RegisterScreen = ({ navigation }) => {
-  const { setUserName, setUserEmail } = useContext(AppContext);
+  const { setUserName, setUserEmail, setFullName } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [name, setName] = useState("");
@@ -26,11 +26,16 @@ const RegisterScreen = ({ navigation }) => {
       Alert.alert("Campos obrigatórios", "Preencha todas as informações para criar sua conta.");
       return;
     }
+    if (!/^[\p{L} ]+$/u.test(trimmedName)) {
+      Alert.alert("Nome inválido", "Use apenas letras e espaços no campo de nome.");
+      return;
+    }
     setLoading(true);
     try {
       await registerUser(trimmedName, trimmedEmail, password);
       const derivedName = getDisplayName(trimmedName, trimmedEmail);
       setUserName(derivedName);
+      setFullName(trimmedName);
       setUserEmail(trimmedEmail);
       Alert.alert("Conta criada", "Vamos descobrir seu nível para personalizar o conteúdo.");
       navigation.replace("LevelQuiz");
@@ -53,7 +58,7 @@ const RegisterScreen = ({ navigation }) => {
         >
           <View style={styles.hero}>
             <View style={styles.heroRow}>
-              <Image source={require("../../../assets/icon.png")} style={styles.logo} resizeMode="contain" />
+              <Image source={require("../../../assets/Logotipo Branco.png")} style={styles.logo} resizeMode="contain" />
               <View style={styles.badge}>
                 <Feather name="award" size={14} color={theme.background} />
                 <Text style={styles.badgeText}>Nova conta</Text>
@@ -84,7 +89,7 @@ const RegisterScreen = ({ navigation }) => {
             <TextInput style={styles.input} placeholder="Senha" value={password} onChangeText={setPassword} secureTextEntry />
             <CustomButton title="Cadastrar" onPress={handleRegister} loading={loading} disabled={loading} />
           </View>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.footerLinkWrapper}>
+          <TouchableOpacity onPress={() => navigation.navigate("Login")} style={styles.footerLinkWrapper}>
             <Text style={styles.footerText}>Ja tem conta? </Text>
             <Text style={[styles.footerText, styles.link]}>Entrar</Text>
           </TouchableOpacity>

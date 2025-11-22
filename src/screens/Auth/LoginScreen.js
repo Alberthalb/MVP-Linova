@@ -11,7 +11,7 @@ import { loginUser } from "../../services/authService";
 import { getFirebaseAuthErrorMessage } from "../../utils/firebaseErrorMessage";
 
 const LoginScreen = ({ navigation }) => {
-  const { setLevel, setUserName, userName, setUserEmail } = useContext(AppContext);
+  const { setLevel, setUserName, userName, setUserEmail, currentUser, authReady } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [email, setEmail] = useState("");
@@ -55,6 +55,8 @@ const LoginScreen = ({ navigation }) => {
   const svgTint = "rgba(17,24,39,0.75)";
   const arrowColor = theme.accent;
 
+  const showSkip = authReady && currentUser;
+
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -62,6 +64,11 @@ const LoginScreen = ({ navigation }) => {
           <TouchableOpacity style={styles.backLink} onPress={() => navigation.goBack()} activeOpacity={0.7}>
             <Text style={styles.backText}>Voltar</Text>
           </TouchableOpacity>
+          {showSkip && (
+            <TouchableOpacity style={styles.skipLink} onPress={() => navigation.replace("MainTabs")} activeOpacity={0.7}>
+              <Text style={styles.skipText}>Ir para o app</Text>
+            </TouchableOpacity>
+          )}
           <View style={styles.logoWrapper}>
             <Image source={require("../../../assets/brand-logo.png")} style={styles.logo} />
           </View>
@@ -146,6 +153,16 @@ const createStyles = (theme) =>
       color: theme.primary,
       fontFamily: typography.fonts.body,
       fontWeight: "600",
+    },
+    skipLink: {
+      alignSelf: "flex-end",
+      marginBottom: spacing.sm,
+    },
+    skipText: {
+      color: theme.muted,
+      fontFamily: typography.fonts.body,
+      fontSize: typography.small,
+      textDecorationLine: "underline",
     },
     logoWrapper: {
       alignItems: "center",

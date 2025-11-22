@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useState } from "react";
+import React, { useContext, useMemo, useState, useEffect } from "react";
 import { View, Text, StyleSheet, TextInput, Switch, Alert, TouchableOpacity, ScrollView, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -7,25 +7,55 @@ import { AppContext } from "../../context/AppContext";
 import { spacing, typography, radius } from "../../styles/theme";
 import { getDisplayName } from "../../utils/userName";
 import { useThemeColors } from "../../hooks/useThemeColors";
-import { logoutUser } from "../../services/authService";
+import { logoutUser, deleteAccount, updateUserAccount } from "../../services/authService";
 import { getFirebaseAuthErrorMessage } from "../../utils/firebaseErrorMessage";
 
 const AccountScreen = ({ navigation }) => {
-  const { userName, setUserName, userEmail, setUserEmail, level, setLevel } = useContext(AppContext);
+  const { userName, setUserName, fullName, setFullName, userEmail, setUserEmail, level, setLevel } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const [name, setName] = useState(userName || "");
+  const [name, setName] = useState(fullName || userName || "");
   const [email, setEmail] = useState(userEmail || "");
   const [notifications, setNotifications] = useState(true);
   const [autoSubs, setAutoSubs] = useState(true);
   const [statInfo, setStatInfo] = useState(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const handleSaveProfile = () => {
-    const display = getDisplayName(name, email, userName);
-    setUserName(display);
-    setUserEmail(email);
-    Alert.alert("Perfil atualizado", "Seu nome e email foram atualizados (em desenvolvimento).");
+  const handleSaveProfile = async () => {
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    if (!trimmedName || !trimmedEmail) {
+      Alert.alert("Campos obrigatórios", "Preencha nome e email.");
+      return;
+    }
+    if (!/^[\p{L} ]+$/u.test(trimmedName)) {
+      Alert.alert("Nome inválido", "Use apenas letras e espaços.");
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      await updateUserAccount({ name: trimmedName, email: trimmedEmail });
+      setFullName(trimmedName);
+      setUserName(getDisplayName(trimmedName, trimmedEmail));
+      setUserEmail(trimmedEmail);
+      Alert.alert("Perfil atualizado", "Seu nome e email foram atualizados.");
+    } catch (error) {
+      Alert.alert("Erro ao atualizar", getFirebaseAuthErrorMessage(error));
+    } finally {
+      setSavingProfile(false);
+    }
   };
+
+  useEffect(() => {
+    setName(fullName || userName || "");
+  }, [fullName, userName]);
+
+  useEffect(() => {
+    setEmail(userEmail || "");
+  }, [userEmail]);
 
   const handleLogout = async () => {
     try {
@@ -46,6 +76,30 @@ const AccountScreen = ({ navigation }) => {
     setStatInfo(messages[type]);
   };
 
+  const handleDeleteAccount = () => {
+    setDeletePassword("");
+    setDeleteModalVisible(true);
+  };
+
+  const confirmDeleteAccount = async () => {
+    if (!deletePassword.trim()) {
+      Alert.alert("Senha obrigatória", "Informe sua senha para confirmar a exclusão.");
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      await deleteAccount(deletePassword.trim());
+      setDeleteModalVisible(false);
+      setDeletePassword("");
+      const rootNavigator = navigation.getParent()?.getParent();
+      rootNavigator?.reset({ index: 0, routes: [{ name: "Welcome" }] });
+    } catch (error) {
+      Alert.alert("Erro ao excluir", getFirebaseAuthErrorMessage(error));
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -61,7 +115,7 @@ const AccountScreen = ({ navigation }) => {
           <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Seu nome" />
           <Text style={styles.label}>Email</Text>
           <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Seu email" autoCapitalize="none" />
-          <CustomButton title="Salvar perfil" onPress={handleSaveProfile} />
+          <CustomButton title="Salvar perfil" onPress={handleSaveProfile} loading={savingProfile} disabled={savingProfile} />
         </View>
 
         <View style={styles.card}>
@@ -125,7 +179,8 @@ const AccountScreen = ({ navigation }) => {
         </View>
 
         <CustomButton title="Alterar senha" variant="ghost" onPress={() => navigation.navigate("ChangePassword")} />
-        <CustomButton title="Sair da conta" variant="ghost" onPress={() => Alert.alert("Logout", "Seu login será encerrado (em desenvolvimento).")} />
+        <CustomButton title="Sair da conta" variant="ghost" onPress={handleLogout} />
+        <CustomButton title="Excluir conta" variant="ghost" onPress={handleDeleteAccount} />
       </ScrollView>
       <Modal transparent animationType="fade" visible={!!statInfo} onRequestClose={() => setStatInfo(null)} statusBarTranslucent>
         <View style={styles.modalOverlay}>
@@ -135,6 +190,30 @@ const AccountScreen = ({ navigation }) => {
             <TouchableOpacity style={styles.modalButton} activeOpacity={0.8} onPress={() => setStatInfo(null)}>
               <Text style={styles.modalButtonText}>OK</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      <Modal transparent animationType="fade" visible={deleteModalVisible} onRequestClose={() => setDeleteModalVisible(false)} statusBarTranslucent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Excluir conta</Text>
+            <Text style={styles.modalText}>Essa ação é permanente. Digite sua senha para confirmar.</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Senha atual"
+              secureTextEntry
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              autoCapitalize="none"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalActionButton, styles.modalActionGhost]} onPress={() => setDeleteModalVisible(false)} disabled={deleteLoading}>
+                <Text style={[styles.modalActionText, styles.modalActionGhostText]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalActionButton} onPress={confirmDeleteAccount} disabled={deleteLoading}>
+                <Text style={styles.modalActionText}>{deleteLoading ? "Excluindo..." : "Excluir"}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -296,6 +375,40 @@ const createStyles = (colors) =>
       fontSize: typography.body,
       fontFamily: typography.fonts.body,
       fontWeight: "700",
+    },
+    modalInput: {
+      backgroundColor: colors.gray,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      fontFamily: typography.fonts.body,
+      color: colors.text,
+    },
+    modalActions: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
+    modalActionButton: {
+      flex: 1,
+      borderRadius: radius.md,
+      paddingVertical: spacing.sm,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.accent,
+    },
+    modalActionGhost: {
+      backgroundColor: "transparent",
+      borderWidth: 1,
+      borderColor: colors.accent,
+    },
+    modalActionText: {
+      color: colors.surface,
+      fontFamily: typography.fonts.button,
+      fontWeight: "600",
+    },
+    modalActionGhostText: {
+      color: colors.accent,
     },
   });
 

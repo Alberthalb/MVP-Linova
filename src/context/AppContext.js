@@ -5,6 +5,8 @@ export const AppContext = createContext({
   setLevel: () => {},
   userName: "Linova",
   setUserName: () => {},
+  fullName: "",
+  setFullName: () => {},
   userEmail: "",
   setUserEmail: () => {},
   darkMode: null,

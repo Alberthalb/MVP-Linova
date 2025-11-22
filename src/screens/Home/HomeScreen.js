@@ -1,5 +1,5 @@
 import React, { useContext, useMemo, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Modal } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import CustomButton from "../../components/CustomButton";
@@ -13,6 +13,7 @@ const HomeScreen = ({ navigation }) => {
   const displayName = getDisplayName(userName, null, "Linova");
   const [isIaModalVisible, setIaModalVisible] = useState(false);
   const [statInfo, setStatInfo] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const theme = useThemeColors();
   const isDarkMode = useIsDarkMode();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -20,6 +21,11 @@ const HomeScreen = ({ navigation }) => {
     days: 21,
     lessons: 5,
     activities: 14,
+  };
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 800);
   };
   const handleIaInDevelopment = () => {
     setIaModalVisible(true);
@@ -45,7 +51,11 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
-      <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.primary} colors={[theme.primary]} />}
+      >
+        <View style={styles.container}>
         <View style={styles.topBar}>
           <TouchableOpacity style={styles.statPill} onPress={() => handleStatPress("days")} activeOpacity={0.8}>
             <Feather name="calendar" size={14} color="#FF6B5C" />
@@ -88,11 +98,12 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
 
-        <View style={styles.actions}>
-          <CustomButton title="Ver aulas" onPress={() => navigation.navigate("LessonList")} />
-          <CustomButton title="Conversacao IA (Em breve)" variant="ghost" onPress={handleIaInDevelopment} />
+          <View style={styles.actions}>
+            <CustomButton title="Ver aulas" onPress={() => navigation.navigate("LessonList")} />
+            <CustomButton title="Conversacao IA (Em breve)" variant="ghost" onPress={handleIaInDevelopment} />
+          </View>
         </View>
-      </View>
+      </ScrollView>
       <Modal transparent animationType="fade" visible={isIaModalVisible || !!statInfo} onRequestClose={() => (statInfo ? setStatInfo(null) : closeIaModal())} statusBarTranslucent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -121,6 +132,10 @@ const createStyles = (colors) =>
       paddingVertical: spacing.layout,
       gap: spacing.lg,
       justifyContent: "flex-start",
+    },
+    scrollContent: {
+      flexGrow: 1,
+      backgroundColor: colors.background,
     },
     topBar: {
       flexDirection: "row",

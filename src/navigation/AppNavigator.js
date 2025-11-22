@@ -128,6 +128,7 @@ const MainTabs = () => {
 const AppNavigator = () => {
   const [level, setLevel] = useState(null);
   const [userName, setUserName] = useState("Linova");
+  const [fullName, setFullName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [darkMode, setDarkMode] = useState(null);
   const navigationRef = useRef(null);
@@ -183,25 +184,26 @@ const AppNavigator = () => {
         setUserEmail(user.email || "");
         try {
           const profile = await getUserProfile(user.uid);
-          if (profile?.name) {
-            setUserName(getDisplayName(profile.name, user.email));
-          } else {
-            setUserName(getDisplayName(user.displayName, user.email));
-          }
+          const profileName = profile?.name || user.displayName || "";
+          setFullName(profileName);
+          setUserName(getDisplayName(profileName, user.email));
           if (typeof profile?.level !== "undefined") {
             setLevel(profile.level);
           }
           await createOrUpdateUserProfile(user.uid, {
-            name: profile?.name || user.displayName || "",
+            name: profileName,
             email: user.email || profile?.email || "",
           });
         } catch (error) {
           console.warn("[Auth] Falha ao carregar perfil:", error);
-          setUserName(getDisplayName(user.displayName, user.email));
+          const fallbackName = user.displayName || "";
+          setFullName(fallbackName);
+          setUserName(getDisplayName(fallbackName, user.email));
         }
       } else {
         setUserEmail("");
         setUserName("Linova");
+        setFullName("");
         setLevel(null);
       }
       setAuthReady(true);
@@ -215,6 +217,8 @@ const AppNavigator = () => {
       setLevel,
       userName,
       setUserName,
+      fullName,
+      setFullName,
       userEmail,
       setUserEmail,
       darkMode,
@@ -224,7 +228,7 @@ const AppNavigator = () => {
       setCurrentUser,
       authReady,
     }),
-    [level, userName, userEmail, darkMode, isDark, currentUser, authReady]
+    [level, userName, fullName, userEmail, darkMode, isDark, currentUser, authReady]
   );
 
   const navigationTheme = useMemo(() => {
