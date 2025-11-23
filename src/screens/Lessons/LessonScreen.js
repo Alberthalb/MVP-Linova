@@ -1,20 +1,121 @@
-import React, { useMemo, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Video } from "expo-av";
 import { Feather } from "@expo/vector-icons";
 import CustomButton from "../../components/CustomButton";
 import { spacing, typography, radius } from "../../styles/theme";
 import { useThemeColors } from "../../hooks/useThemeColors";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db, storage } from "../../services/firebase";
+import { getDownloadURL, ref } from "firebase/storage";
 
-const VIDEO_URL = "https://d23dyxeqlo5psv.cloudfront.net/big_buck_bunny.mp4";
-const TRANSCRIPT = "Neste trecho voce ve cumprimentos basicos, expressoes do dia a dia e pronuncia clara para praticar repeticao guiada.";
+const timeToMs = (timeString = "") => {
+  const clean = timeString.replace(",", ".").trim();
+  const parts = clean.split(":");
+  if (parts.length !== 3) return 0;
+  const [hours, minutes, seconds] = parts;
+  const [sec, ms = "0"] = seconds.split(".");
+  return (
+    parseInt(hours, 10) * 3600000 +
+    parseInt(minutes, 10) * 60000 +
+    parseInt(sec, 10) * 1000 +
+    parseInt(ms.padEnd(3, "0"), 10)
+  );
+};
+
+const parseSubtitleFile = (text = "") => {
+  const cleaned = text.replace(/\r/g, "").replace(/^WEBVTT.*\n/, "");
+  const blocks = cleaned.split(/\n\n+/);
+  const segments = [];
+  blocks.forEach((block) => {
+    const lines = block.split("\n").filter(Boolean);
+    if (lines.length < 2) return;
+    let timeLine = lines[0];
+    if (/^\d+$/.test(lines[0])) {
+      timeLine = lines[1];
+      lines.splice(0, 2);
+    } else {
+      lines.splice(0, 1);
+    }
+    const [start, end] = timeLine.split("-->").map((item) => item.trim());
+    if (!start || !end) return;
+    const textContent = lines.join("\n");
+    segments.push({
+      start: timeToMs(start),
+      end: timeToMs(end),
+      text: textContent,
+    });
+  });
+  return segments;
+};
 
 const LessonScreen = ({ route, navigation }) => {
-  const lesson = route?.params?.lesson;
+  const lessonId = route?.params?.lessonId || route?.params?.lesson?.id;
+  const [lesson, setLesson] = useState(route?.params?.lesson || null);
+  const [videoUrl, setVideoUrl] = useState(null);
+  const [subtitleSegments, setSubtitleSegments] = useState([]);
+  const [currentSubtitle, setCurrentSubtitle] = useState("");
   const [showSubtitles, setShowSubtitles] = useState(true);
+  const [loading, setLoading] = useState(!lesson);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    if (!lessonId) return;
+    const docRef = doc(db, "lessons", lessonId);
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setLesson({ id: snapshot.id, ...snapshot.data() });
+        }
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return unsubscribe;
+  }, [lessonId]);
+
+  useEffect(() => {
+    const loadMedia = async () => {
+      if (!lesson) return;
+      try {
+        if (lesson.videoPath) {
+          const videoRefStorage = ref(storage, lesson.videoPath);
+          const url = await getDownloadURL(videoRefStorage);
+          setVideoUrl(url);
+        }
+        if (lesson.captionPath) {
+          const captionRef = ref(storage, lesson.captionPath);
+          const captionUrl = await getDownloadURL(captionRef);
+          const response = await fetch(captionUrl);
+          const text = await response.text();
+          const segments = parseSubtitleFile(text);
+          setSubtitleSegments(segments);
+        } else {
+          setSubtitleSegments([]);
+        }
+        setCurrentSubtitle("");
+      } catch (error) {
+        console.warn("[Lesson] Falha ao carregar midia:", error);
+      }
+    };
+    loadMedia();
+  }, [lesson]);
+
+  const handlePlaybackStatusUpdate = (status) => {
+    if (!status.isLoaded || !subtitleSegments.length) return;
+    const { positionMillis } = status;
+    const active = subtitleSegments.find(
+      (segment) => positionMillis >= segment.start && positionMillis <= segment.end
+    );
+    const text = active ? active.text : "";
+    if (text !== currentSubtitle) {
+      setCurrentSubtitle(text);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
@@ -23,36 +124,63 @@ const LessonScreen = ({ route, navigation }) => {
           <Feather name="chevron-left" size={20} color={theme.primary} />
           <Text style={styles.backButtonText}>Voltar</Text>
         </TouchableOpacity>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.heading}>{lesson?.title || "Aula"}</Text>
-            <Text style={styles.subheading}>Nivel: {lesson?.level || "Beginner"}</Text>
+        {loading ? (
+          <View style={styles.loader}>
+            <ActivityIndicator color={theme.primary} />
+            <Text style={styles.subheading}>Carregando aula...</Text>
           </View>
-          <View style={styles.tag}>
-            <Feather name="clock" size={14} color={theme.background} />
-            <Text style={styles.tagText}>10 min</Text>
-          </View>
-        </View>
-        <View style={styles.videoWrapper}>
-          <View style={styles.videoOverlay} />
-          <View style={styles.videoBadge}>
-            <Feather name="play-circle" size={16} color={theme.background} />
-            <Text style={styles.videoBadgeText}>Player em desenvolvimento</Text>
-          </View>
-          <Video source={{ uri: VIDEO_URL }} style={styles.video} useNativeControls resizeMode="contain" shouldPlay />
-        </View>
-        <TouchableOpacity onPress={() => setShowSubtitles((prev) => !prev)} style={styles.subtitleButton} activeOpacity={0.9}>
-        <Text style={styles.subtitleButtonText}>{showSubtitles ? "Desativar" : "Ativar"} legendas (em desenvolvimento)</Text>
-      </TouchableOpacity>
-      {showSubtitles && <Text style={styles.subtitles}>[Legendas em desenvolvimento] Hello! Welcome to your lesson.</Text>}
-        <View style={styles.transcript}>
-          <Text style={styles.sectionTitle}>Transcricao</Text>
-          <Text style={styles.body}>{TRANSCRIPT}</Text>
-        </View>
-        <CustomButton
-          title="Fazer quiz"
-          onPress={() => navigation.navigate("LessonQuiz", { lessonId: lesson?.id || 0, lessonTitle: lesson?.title })}
-        />
+        ) : (
+          <>
+            <View style={styles.header}>
+              <View>
+                <Text style={styles.heading}>{lesson?.title || "Aula"}</Text>
+                <Text style={styles.subheading}>Nível: {lesson?.level || "Discoverer"}</Text>
+              </View>
+              <View style={styles.tag}>
+                <Feather name="clock" size={14} color={theme.background} />
+                <Text style={styles.tagText}>{lesson?.duration || "10 min"}</Text>
+              </View>
+            </View>
+            <View style={styles.videoWrapper}>
+              {!videoUrl && (
+                <View style={[styles.video, styles.videoPlaceholder]}>
+                  <Text style={styles.videoBadgeText}>Carregando vídeo...</Text>
+                </View>
+              )}
+              {videoUrl && (
+                <Video
+                  ref={videoRef}
+                  source={{ uri: videoUrl }}
+                  style={styles.video}
+                  useNativeControls
+                  resizeMode="contain"
+                  shouldPlay={false}
+                  onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+                />
+              )}
+            </View>
+            <TouchableOpacity onPress={() => setShowSubtitles((prev) => !prev)} style={styles.subtitleButton} activeOpacity={0.9}>
+              <Text style={styles.subtitleButtonText}>{showSubtitles ? "Ocultar" : "Mostrar"} legendas</Text>
+            </TouchableOpacity>
+            {showSubtitles && (
+              <View style={styles.subtitles}>
+                <Text style={styles.subtitleText}>
+                  {currentSubtitle || "Carregando legendas..."}
+                </Text>
+              </View>
+            )}
+            {lesson?.transcript && (
+              <View style={styles.transcript}>
+                <Text style={styles.sectionTitle}>Transcrição</Text>
+                <Text style={styles.body}>{lesson.transcript}</Text>
+              </View>
+            )}
+            <CustomButton
+              title="Fazer quiz"
+              onPress={() => navigation.navigate("LessonQuiz", { lessonId: lesson?.id || lessonId, lessonTitle: lesson?.title })}
+            />
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -107,27 +235,10 @@ const createStyles = (colors) =>
     video: {
       flex: 1,
     },
-    videoOverlay: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      height: 120,
-      zIndex: 1,
-      backgroundColor: colors.overlay,
-    },
-    videoBadge: {
-      position: "absolute",
-      top: spacing.sm,
-      right: spacing.sm,
-      backgroundColor: "rgba(0,0,0,0.35)",
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.xs,
-      borderRadius: radius.sm,
-      zIndex: 2,
-      flexDirection: "row",
+    videoPlaceholder: {
       alignItems: "center",
-      gap: 6,
+      justifyContent: "center",
+      backgroundColor: colors.gray,
     },
     videoBadgeText: {
       color: colors.background,
@@ -150,8 +261,13 @@ const createStyles = (colors) =>
       backgroundColor: colors.surface,
       padding: spacing.md,
       borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    subtitleText: {
       color: colors.text,
       fontFamily: typography.fonts.body,
+      textAlign: "center",
     },
     transcript: {
       backgroundColor: colors.surface,
@@ -192,6 +308,12 @@ const createStyles = (colors) =>
       color: colors.background,
       fontWeight: "700",
       fontFamily: typography.fonts.body,
+    },
+    loader: {
+      minHeight: 200,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.sm,
     },
   });
 

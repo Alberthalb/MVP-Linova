@@ -1,43 +1,70 @@
-import React, { useMemo, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import React, { useContext, useEffect, useMemo, useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import CustomButton from "../../components/CustomButton";
 import { spacing, typography, radius } from "../../styles/theme";
 import { Feather } from "@expo/vector-icons";
 import { useThemeColors } from "../../hooks/useThemeColors";
-
-const QUESTIONS = [
-  {
-    id: 1,
-    question: "Como dizer ola de forma informal?",
-    options: ["Hey there!", "Good bye!", "See you yesterday"],
-    correct: 0,
-  },
-  {
-    id: 2,
-    question: "Qual expressao indica rotina diaria?",
-    options: ["I brush my teeth every morning.", "I brushed my teeth tomorrow.", "I will brush my teeth yesterday."],
-    correct: 0,
-  },
-  {
-    id: 3,
-    question: "Escolha a frase gramaticalmente correta:",
-    options: ["She don't like apples.", "She doesn't like apples.", "She not like apples."],
-    correct: 1,
-  },
-];
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../../services/firebase";
+import { AppContext } from "../../context/AppContext";
+import { saveLessonProgress } from "../../services/userService";
 
 const STORAGE_KEY = "@linova:lessonProgress";
+
+const normalizeOptions = (options) => {
+  if (Array.isArray(options)) return options;
+  if (options && typeof options === "object") {
+    return Object.keys(options)
+      .sort()
+      .map((key) => options[key])
+      .map((value) => {
+        if (typeof value === "string") return value;
+        if (typeof value === "number") return String(value);
+        if (value && typeof value === "object") {
+          if (typeof value.text === "string") return value.text;
+          const nested = Object.values(value).find((entry) => typeof entry === "string");
+          if (nested) return nested;
+        }
+        return "";
+      })
+      .filter((value) => !!value);
+  }
+  return [];
+};
+
+const normalizeQuiz = (quizData) => {
+  let items = [];
+  if (Array.isArray(quizData)) {
+    items = quizData;
+  } else if (quizData && typeof quizData === "object") {
+    items = Object.keys(quizData)
+      .sort()
+      .map((key) => quizData[key]);
+  }
+  return items.map((item, index) => {
+    const rawOptions = item.options ?? item.Options ?? [];
+    return {
+      id: item.id ?? index + 1,
+      question: item.question || "",
+      options: normalizeOptions(rawOptions),
+      correct: item.correct ?? 0,
+    };
+  });
+};
 
 const LessonQuizScreen = ({ navigation, route }) => {
   const lessonId = route?.params?.lessonId ?? 0;
   const lessonTitle = route?.params?.lessonTitle ?? "Aula";
+  const { currentUser } = useContext(AppContext);
+  const [questions, setQuestions] = useState([]);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
-  const total = QUESTIONS.length;
-  const currentQuestion = useMemo(() => QUESTIONS[step], [step]);
-  const progress = (step + 1) / total;
+  const [loading, setLoading] = useState(true);
+  const total = questions.length;
+  const currentQuestion = useMemo(() => questions[step], [step, questions]);
+  const progress = total > 0 ? (step + 1) / total : 0;
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -45,7 +72,32 @@ const LessonQuizScreen = ({ navigation, route }) => {
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: optionIndex }));
   };
 
+  useEffect(() => {
+    if (!lessonId) {
+      setLoading(false);
+      return;
+    }
+    const docRef = doc(db, "lessons", lessonId);
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snapshot) => {
+        const data = snapshot.data();
+        const quizData = normalizeQuiz(data?.quiz || []);
+        setQuestions(quizData);
+        setStep(0);
+        setAnswers({});
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return unsubscribe;
+  }, [lessonId]);
+
   const goNext = async () => {
+    if (!currentQuestion) {
+      Alert.alert("Quiz indisponível", "Esta aula ainda não possui perguntas.");
+      return;
+    }
     if (answers[currentQuestion.id] === undefined) {
       Alert.alert("Responda a pergunta", "Selecione uma alternativa antes de avancar.");
       return;
@@ -58,8 +110,8 @@ const LessonQuizScreen = ({ navigation, route }) => {
   };
 
   const finishQuiz = async () => {
-    const correctAnswers = QUESTIONS.filter((q) => answers[q.id] === q.correct).length;
-    const score = Math.round((correctAnswers / total) * 100);
+    const correctAnswers = questions.filter((q) => answers[q.id] === q.correct).length;
+    const score = total > 0 ? Math.round((correctAnswers / total) * 100) : 0;
     try {
       const existing = await AsyncStorage.getItem(STORAGE_KEY);
       const parsed = existing ? JSON.parse(existing) : {};
@@ -68,6 +120,15 @@ const LessonQuizScreen = ({ navigation, route }) => {
         [lessonId]: { score, completed: true, lessonTitle },
       };
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      if (currentUser?.uid) {
+        await saveLessonProgress(currentUser.uid, lessonId, {
+          lessonTitle,
+          score,
+          correctAnswers,
+          totalQuestions: total,
+          answers,
+        });
+      }
       Alert.alert("Progresso salvo", `Voce acertou ${correctAnswers}/${total} (${score}%).`, [
         { text: "Ok", onPress: () => navigation.navigate("LessonList") },
       ]);
@@ -86,29 +147,40 @@ const LessonQuizScreen = ({ navigation, route }) => {
         <View style={styles.hero}>
           <Text style={styles.heading}>Quiz: {lessonTitle}</Text>
           <Text style={styles.progress}>
-            Pergunta {step + 1} de {total}
+            Pergunta {Math.min(step + 1, Math.max(total, 1))} de {Math.max(total, 1)}
           </Text>
         </View>
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-        <View style={styles.card}>
-          <Text style={styles.question}>{currentQuestion.question}</Text>
-          {currentQuestion.options.map((option, index) => {
-            const selected = answers[currentQuestion.id] === index;
-            return (
-              <TouchableOpacity
-                key={option}
-                style={[styles.option, selected && styles.optionSelected]}
-                onPress={() => selectOption(index)}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.optionText, selected && styles.optionTextSelected]}>{option}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <CustomButton title={step === total - 1 ? "Finalizar" : "Proxima"} onPress={goNext} />
+        {loading ? (
+          <View style={styles.loader}>
+            <ActivityIndicator color={theme.primary} />
+            <Text style={styles.progress}>Carregando perguntas...</Text>
+          </View>
+        ) : total === 0 ? (
+          <Text style={styles.empty}>Esta aula ainda não possui quiz.</Text>
+        ) : (
+          <>
+            <View style={styles.card}>
+              <Text style={styles.question}>{currentQuestion?.question}</Text>
+              {currentQuestion?.options?.map((option, index) => {
+                const selected = answers[currentQuestion.id] === index;
+                return (
+                  <TouchableOpacity
+                    key={`${currentQuestion.id}-${option}`}
+                    style={[styles.option, selected && styles.optionSelected]}
+                    onPress={() => selectOption(index)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.optionText, selected && styles.optionTextSelected]}>{option}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <CustomButton title={step === total - 1 ? "Finalizar" : "Proxima"} onPress={goNext} />
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -195,6 +267,16 @@ const createStyles = (colors) =>
     progressFill: {
       height: "100%",
       backgroundColor: colors.primary,
+    },
+    loader: {
+      alignItems: "center",
+      gap: spacing.sm,
+      marginTop: spacing.lg,
+    },
+    empty: {
+      textAlign: "center",
+      color: colors.muted,
+      fontFamily: typography.fonts.body,
     },
   });
 

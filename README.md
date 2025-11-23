@@ -1,8 +1,1 @@
-﻿# navigating firebase console
-
-## find firestore database section
-1. entre em https://console.firebase.google.com/ e selecione o projeto *app-linova*.
-2. no menu lateral esquerdo clique em **Firestore Database** (fica em “Build / Criar”).
-3. clique no botão **Criar banco de dados**; escolha modo produção (ou teste) e confirme a região.
-4. depois que a base for criada, vá na aba **Regras** para ajustá-las conforme precisar.
-
+﻿

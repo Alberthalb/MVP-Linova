@@ -8,11 +8,20 @@ import { spacing, typography, radius } from "../../styles/theme";
 import { getDisplayName } from "../../utils/userName";
 import { useThemeColors, useIsDarkMode } from "../../hooks/useThemeColors";
 
+const levelDescriptions = {
+  Discoverer: "Discoverer • Você está dando os primeiros passos e explora o idioma com conteúdo guiado.",
+  Pathfinder: "Pathfinder • Entende o básico e já se vira em situações simples.",
+  Communicator: "Communicator • Conversa com consistência e entende boa parte das interações.",
+  Connector: "Connector • Se expressa com clareza em contextos sociais e profissionais.",
+  Storyteller: "Storyteller • Domina nuances, argumenta e apresenta ideias complexas em inglês.",
+};
+
 const HomeScreen = ({ navigation }) => {
-  const { level, userName, setDarkMode } = useContext(AppContext);
-  const displayName = getDisplayName(userName, null, "Linova");
+  const { level, userName, setDarkMode, authReady } = useContext(AppContext);
+  const displayName = authReady && userName ? getDisplayName(userName, null, "Linova") : "";
   const [isIaModalVisible, setIaModalVisible] = useState(false);
   const [statInfo, setStatInfo] = useState(null);
+  const [levelInfo, setLevelInfo] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const theme = useThemeColors();
   const isDarkMode = useIsDarkMode();
@@ -38,6 +47,10 @@ const HomeScreen = ({ navigation }) => {
       activities: "Atividades práticas concluídas no app.",
     };
     setStatInfo(messages[type]);
+  };
+  const handleLevelInfo = () => {
+    const description = Object.values(levelDescriptions).join("\n\n");
+    setLevelInfo(description);
   };
 
   const handleThemeToggle = () => {
@@ -78,12 +91,18 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.heroRow}>
             <View>
               <Text style={styles.heroLabel}>Bem-vindo</Text>
-              <Text style={styles.welcome}>Ola, {displayName}!</Text>
+              {displayName ? (
+                <Text style={styles.welcome}>Ola, {displayName}!</Text>
+              ) : (
+                <Text style={styles.welcome}>
+                  Ola, <Text style={styles.loadingDots}>...</Text>
+                </Text>
+              )}
             </View>
-            <View style={styles.levelPill}>
+            <TouchableOpacity style={styles.levelPill} onPress={handleLevelInfo} activeOpacity={0.8}>
               <Feather name="star" size={16} color={theme.primary} />
-              <Text style={styles.levelText}>{level || "Beginner"}</Text>
-            </View>
+              <Text style={styles.levelText}>{level || "Discoverer"}</Text>
+            </TouchableOpacity>
           </View>
           <Text style={styles.subtitle}>Continue de onde parou e desbloqueie novas aulas.</Text>
           <View style={styles.heroActions}>
@@ -104,12 +123,12 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
       </ScrollView>
-      <Modal transparent animationType="fade" visible={isIaModalVisible || !!statInfo} onRequestClose={() => (statInfo ? setStatInfo(null) : closeIaModal())} statusBarTranslucent>
+      <Modal transparent animationType="fade" visible={isIaModalVisible || !!statInfo || !!levelInfo} onRequestClose={() => (statInfo ? setStatInfo(null) : levelInfo ? setLevelInfo(null) : closeIaModal())} statusBarTranslucent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{statInfo ? "Seu progresso" : "Funcao em desenvolvimento"}</Text>
-            <Text style={styles.modalText}>{statInfo || "A Conversacao IA esta em desenvolvimento e ficara disponivel em breve."}</Text>
-            <TouchableOpacity style={styles.modalButton} activeOpacity={0.8} onPress={() => (statInfo ? setStatInfo(null) : closeIaModal())}>
+            <Text style={styles.modalTitle}>{statInfo ? "Seu progresso" : levelInfo ? level : "Funcao em desenvolvimento"}</Text>
+            <Text style={styles.modalText}>{statInfo || levelInfo || "A Conversacao IA esta em desenvolvimento e ficara disponivel em breve."}</Text>
+            <TouchableOpacity style={styles.modalButton} activeOpacity={0.8} onPress={() => (statInfo ? setStatInfo(null) : levelInfo ? setLevelInfo(null) : closeIaModal())}>
               <Text style={styles.modalButtonText}>OK</Text>
             </TouchableOpacity>
           </View>
@@ -235,6 +254,9 @@ const createStyles = (colors) =>
       color: "#FFFFFF",
       fontFamily: typography.fonts.body,
       fontWeight: "600",
+    },
+    loadingDots: {
+      letterSpacing: 2,
     },
     actions: {
       gap: spacing.sm,

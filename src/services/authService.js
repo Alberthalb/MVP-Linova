@@ -3,7 +3,6 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
-  updateEmail,
   sendPasswordResetEmail,
   verifyPasswordResetCode as firebaseVerifyPasswordResetCode,
   confirmPasswordReset as firebaseConfirmPasswordReset,
@@ -11,9 +10,10 @@ import {
   reauthenticateWithCredential,
   updatePassword,
   deleteUser,
+  verifyBeforeUpdateEmail,
 } from "firebase/auth";
 import { auth } from "./firebase";
-import { createOrUpdateUserProfile, deleteUserProfile } from "./userService";
+import { createOrUpdateUserProfile, deleteUserProfile, deleteAllUserData } from "./userService";
 
 export const registerUser = async (name, email, password) => {
   const credential = await createUserWithEmailAndPassword(auth, email, password);
@@ -62,6 +62,7 @@ export const deleteAccount = async (currentPassword) => {
   const credential = EmailAuthProvider.credential(user.email, currentPassword);
   await reauthenticateWithCredential(user, credential);
   await deleteUserProfile(user.uid);
+  await deleteAllUserData(user.uid);
   await deleteUser(user);
 };
 
@@ -71,15 +72,18 @@ export const updateUserAccount = async ({ name, email }) => {
     throw new Error("Usuário não autenticado");
   }
   const promises = [];
+  let emailPendingVerification = false;
   if (name && name !== user.displayName) {
     promises.push(updateProfile(user, { displayName: name }));
   }
   if (email && email !== user.email) {
-    promises.push(updateEmail(user, email));
+    await verifyBeforeUpdateEmail(user, email);
+    emailPendingVerification = true;
   }
   await Promise.all(promises);
   await createOrUpdateUserProfile(user.uid, {
     name: name || user.displayName || "",
     email: email || user.email || "",
   });
+  return { emailPendingVerification };
 };

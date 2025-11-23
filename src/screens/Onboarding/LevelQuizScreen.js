@@ -1,13 +1,14 @@
-import React, { useContext, useMemo, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import React, { useContext, useEffect, useMemo, useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import CustomButton from "../../components/CustomButton";
 import { AppContext } from "../../context/AppContext";
 import { spacing, typography, radius } from "../../styles/theme";
 import { getDisplayName } from "../../utils/userName";
 import { useThemeColors } from "../../hooks/useThemeColors";
+import { createOrUpdateUserProfile, fetchInitialQuizQuestions, saveInitialQuizResult } from "../../services/userService";
 
-const QUESTIONS = [
+const FALLBACK_QUESTIONS = [
   {
     id: 1,
     question: "Voce entende saudacoes e frases simples?",
@@ -56,42 +57,86 @@ const QUESTIONS = [
 ];
 
 const LevelQuizScreen = ({ navigation }) => {
-  const { setLevel, userName } = useContext(AppContext);
+  const { setLevel, userName, currentUser } = useContext(AppContext);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
+  const [questions, setQuestions] = useState(FALLBACK_QUESTIONS);
+  const [loading, setLoading] = useState(false);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  const question = useMemo(() => QUESTIONS[step], [step]);
-  const totalSteps = QUESTIONS.length;
+  const question = useMemo(() => questions[step], [step, questions]);
+  const totalSteps = questions.length;
   const progress = (step + 1) / totalSteps;
+
+  useEffect(() => {
+    const loadQuestions = async () => {
+      setLoading(true);
+      try {
+        const fetched = await fetchInitialQuizQuestions();
+        if (fetched && fetched.length) {
+          setQuestions(fetched);
+        }
+      } catch (error) {
+        console.warn("[Quiz] Falha ao carregar perguntas, usando fallback.", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadQuestions();
+  }, []);
 
   const handleSelect = (value) => {
     setAnswers((prev) => ({ ...prev, [question.id]: value }));
   };
 
-  const goNext = () => {
-    if (!answers[question.id]) {
+  const goNext = async () => {
+    if (!question || !answers[question.id]) {
       Alert.alert("Responda para continuar", "Selecione uma opcao antes de avancar.");
       return;
     }
     if (step < totalSteps - 1) {
       setStep((prev) => prev + 1);
     } else {
-      finalizeLevel();
+      await finalizeLevel();
     }
   };
 
-  const finalizeLevel = () => {
+  const finalizeLevel = async () => {
     const score = Object.values(answers).reduce((acc, val) => acc + val, 0);
     const average = score / totalSteps;
-    let computedLevel = "Beginner";
+    let computedLevel = "Discoverer";
     if (average >= 2.5) {
-      computedLevel = "Advanced";
-    } else if (average >= 1.7) {
-      computedLevel = "Intermediate";
+      computedLevel = "Storyteller";
+    } else if (average >= 2) {
+      computedLevel = "Connector";
+    } else if (average >= 1.5) {
+      computedLevel = "Communicator";
+    } else if (average >= 1.2) {
+      computedLevel = "Pathfinder";
     }
-    setLevel(computedLevel);
+    const startingLevel = "Discoverer";
+    setLevel(startingLevel);
+    if (currentUser?.uid) {
+      try {
+        await saveInitialQuizResult(currentUser.uid, {
+          answers,
+          score,
+          average,
+          suggestedLevel: computedLevel,
+          startingLevel,
+        });
+        await createOrUpdateUserProfile(currentUser.uid, {
+          level: startingLevel,
+          initialQuizSuggestedLevel: computedLevel,
+          initialQuizScore: score,
+          initialQuizAverage: average,
+          initialQuizCompleted: true,
+        });
+      } catch (error) {
+        console.warn("[Quiz] Falha ao salvar resultado no Firestore:", error);
+      }
+    }
     navigation.replace("MainTabs");
   };
 
@@ -108,23 +153,32 @@ const LevelQuizScreen = ({ navigation }) => {
         <View style={styles.progressBar}>
           <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-        <View style={styles.card}>
-          <Text style={styles.question}>{question.question}</Text>
-          {question.options.map((option) => {
-            const selected = answers[question.id] === option.value;
-            return (
-              <TouchableOpacity
-                key={option.text}
-                style={[styles.option, selected && styles.optionSelected]}
-                onPress={() => handleSelect(option.value)}
-                activeOpacity={0.85}
-              >
-                <Text style={[styles.optionText, selected && styles.optionSelectedText]}>{option.text}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <CustomButton title={step === totalSteps - 1 ? "Finalizar" : "Proxima"} onPress={goNext} style={styles.button} />
+        {loading ? (
+          <View style={styles.loader}>
+            <ActivityIndicator color={theme.primary} />
+            <Text style={styles.progress}>Carregando perguntas...</Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.card}>
+              <Text style={styles.question}>{question?.question || "Pergunta"}</Text>
+              {question?.options?.map((option) => {
+                const selected = answers[question.id] === option.value;
+                return (
+                  <TouchableOpacity
+                    key={option.text}
+                    style={[styles.option, selected && styles.optionSelected]}
+                    onPress={() => handleSelect(option.value)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.optionText, selected && styles.optionSelectedText]}>{option.text}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <CustomButton title={step === totalSteps - 1 ? "Finalizar" : "Proxima"} onPress={goNext} style={styles.button} />
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -208,6 +262,10 @@ const createStyles = (colors) =>
     progressFill: {
       height: "100%",
       backgroundColor: colors.primary,
+    },
+    loader: {
+      alignItems: "center",
+      gap: spacing.xs,
     },
   });
 

@@ -1,36 +1,70 @@
-import React, { useContext, useMemo, useState } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput } from "react-native";
+import React, { useContext, useEffect, useMemo, useState } from "react";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { spacing, typography, radius } from "../../styles/theme";
 import { AppContext } from "../../context/AppContext";
 import { getDisplayName } from "../../utils/userName";
 import { useThemeColors } from "../../hooks/useThemeColors";
-
-const LESSONS = [
-  { id: 1, title: "Basic Greetings", level: "Beginner" },
-  { id: 2, title: "Daily Activities", level: "Beginner" },
-  { id: 3, title: "Advanced Grammar", level: "Advanced" },
-];
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { db } from "../../services/firebase";
 
 const LessonListScreen = ({ navigation }) => {
-  const { userName } = useContext(AppContext);
+  const { userName, level: currentLevel } = useContext(AppContext);
   const friendlyName = getDisplayName(userName);
   const [filter, setFilter] = useState("Todas");
-  const [query, setQuery] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [lessons, setLessons] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [availableLevels, setAvailableLevels] = useState(["Todas"]);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
+  useEffect(() => {
+    const lessonsQuery = query(collection(db, "lessons"), orderBy("order"));
+    const unsubscribe = onSnapshot(
+      lessonsQuery,
+      (snapshot) => {
+        const data = snapshot.docs.map((docSnap) => {
+          const payload = docSnap.data();
+          return {
+            id: docSnap.id,
+            title: payload.title || "Aula",
+            level: payload.level || "Discoverer",
+            order: payload.order ?? 0,
+          };
+        });
+        setLessons(data);
+        const levels = Array.from(new Set(data.map((item) => item.level))).filter(Boolean);
+        setAvailableLevels(["Todas", ...levels]);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return unsubscribe;
+  }, []);
+
   const filteredLessons = useMemo(() => {
-    return LESSONS.filter((item) => {
-      const matchesLevel = filter === "Todas" || item.level === filter;
-      const matchesQuery = item.title.toLowerCase().includes(query.toLowerCase());
+    return lessons.filter((item) => {
+      const matchesLevel =
+        filter === "Todas" || item.level?.toLowerCase() === filter.toLowerCase();
+      const matchesQuery = item.title.toLowerCase().includes(searchTerm.toLowerCase());
       return matchesLevel && matchesQuery;
     });
-  }, [filter, query]);
+  }, [filter, searchTerm, lessons]);
+
+  useEffect(() => {
+    if (currentLevel) {
+      setFilter(currentLevel);
+    }
+  }, [currentLevel]);
 
   const renderItem = ({ item }) => (
-    <TouchableOpacity style={styles.card} onPress={() => navigation.navigate("Lesson", { lesson: item })} activeOpacity={0.85}>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => navigation.navigate("Lesson", { lessonId: item.id })}
+      activeOpacity={0.85}
+    >
       <Text style={styles.title}>{item.title}</Text>
       <Text style={styles.level}>Nivel: {item.level}</Text>
     </TouchableOpacity>
@@ -50,7 +84,7 @@ const LessonListScreen = ({ navigation }) => {
             </Text>
           </View>
           <View style={styles.filterRow}>
-            {["Todas", "Beginner", "Advanced"].map((tag) => {
+            {availableLevels.map((tag) => {
               const active = filter === tag;
               return (
                 <TouchableOpacity
@@ -71,18 +105,25 @@ const LessonListScreen = ({ navigation }) => {
           style={styles.searchInput}
           placeholder="Buscar aula"
           placeholderTextColor={theme.muted}
-          value={query}
-          onChangeText={setQuery}
+          value={searchTerm}
+          onChangeText={setSearchTerm}
         />
       </View>
-      <FlatList
-        data={filteredLessons}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={<Text style={styles.empty}>Nenhuma aula encontrada.</Text>}
-      />
+      {loading ? (
+        <View style={styles.loader}>
+          <ActivityIndicator color={theme.primary} />
+          <Text style={styles.empty}>Carregando aulas...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredLessons}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={<Text style={styles.empty}>Nenhuma aula encontrada.</Text>}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -198,6 +239,12 @@ const createStyles = (colors) =>
       color: colors.muted,
       fontFamily: typography.fonts.body,
       marginTop: spacing.lg,
+    },
+    loader: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      gap: spacing.sm,
     },
   });
 

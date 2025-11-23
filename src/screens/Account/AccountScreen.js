@@ -11,7 +11,7 @@ import { logoutUser, deleteAccount, updateUserAccount } from "../../services/aut
 import { getFirebaseAuthErrorMessage } from "../../utils/firebaseErrorMessage";
 
 const AccountScreen = ({ navigation }) => {
-  const { userName, setUserName, fullName, setFullName, userEmail, setUserEmail, level, setLevel } = useContext(AppContext);
+  const { userName, setUserName, fullName, setFullName, userEmail, setUserEmail } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [name, setName] = useState(fullName || userName || "");
@@ -37,11 +37,18 @@ const AccountScreen = ({ navigation }) => {
     }
     setSavingProfile(true);
     try {
-      await updateUserAccount({ name: trimmedName, email: trimmedEmail });
+      const result = await updateUserAccount({ name: trimmedName, email: trimmedEmail });
       setFullName(trimmedName);
       setUserName(getDisplayName(trimmedName, trimmedEmail));
       setUserEmail(trimmedEmail);
-      Alert.alert("Perfil atualizado", "Seu nome e email foram atualizados.");
+      if (result?.emailPendingVerification) {
+        Alert.alert(
+          "Verifique seu email",
+          `Enviamos um link para ${trimmedEmail}. Confirme para concluir a troca de email.`
+        );
+      } else {
+        Alert.alert("Perfil atualizado", "Seu nome e email foram atualizados.");
+      }
     } catch (error) {
       Alert.alert("Erro ao atualizar", getFirebaseAuthErrorMessage(error));
     } finally {
@@ -137,23 +144,6 @@ const AccountScreen = ({ navigation }) => {
             </View>
             <Switch value={autoSubs} onValueChange={setAutoSubs} trackColor={{ true: theme.primary }} />
           </View>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Nível atual</Text>
-            <Feather name="award" size={16} color={theme.primary} />
-          </View>
-          <Text style={styles.levelValue}>{level || "Não definido"}</Text>
-          <TouchableOpacity
-            style={styles.linkButton}
-            onPress={() => {
-              setLevel(null);
-              Alert.alert("Ok", "Reinicie o quiz inicial para recalcular o nível.");
-            }}
-          >
-            <Text style={styles.linkButtonText}>Recalcular nível</Text>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.card}>
@@ -299,20 +289,6 @@ const createStyles = (colors) =>
     prefSubtitle: {
       color: colors.muted,
       fontFamily: typography.fonts.body,
-    },
-    levelValue: {
-      fontSize: typography.subheading + 2,
-      fontWeight: "700",
-      color: colors.text,
-      fontFamily: typography.fonts.heading,
-    },
-    linkButton: {
-      paddingVertical: spacing.xs,
-    },
-    linkButtonText: {
-      color: colors.primary,
-      fontFamily: typography.fonts.body,
-      fontWeight: "700",
     },
     summaryRow: {
       flexDirection: "row",

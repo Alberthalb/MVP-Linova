@@ -182,24 +182,24 @@ const AppNavigator = () => {
       setCurrentUser(user);
       if (user) {
         setUserEmail(user.email || "");
+        let resolvedName = user.displayName || "";
         try {
           const profile = await getUserProfile(user.uid);
-          const profileName = profile?.name || user.displayName || "";
-          setFullName(profileName);
-          setUserName(getDisplayName(profileName, user.email));
+          if (profile?.name) {
+            resolvedName = profile.name;
+          }
           if (typeof profile?.level !== "undefined") {
             setLevel(profile.level);
           }
           await createOrUpdateUserProfile(user.uid, {
-            name: profileName,
+            name: resolvedName,
             email: user.email || profile?.email || "",
           });
         } catch (error) {
           console.warn("[Auth] Falha ao carregar perfil:", error);
-          const fallbackName = user.displayName || "";
-          setFullName(fallbackName);
-          setUserName(getDisplayName(fallbackName, user.email));
         }
+        setFullName(resolvedName);
+        setUserName(getDisplayName(resolvedName, user.email));
       } else {
         setUserEmail("");
         setUserName("Linova");
