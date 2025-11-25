@@ -33,6 +33,29 @@ const Stack = createNativeStackNavigator();
 const AccountStackNavigator = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 const TAB_ROUTE_ORDER = ["TabHome", "TabAccount", "TabSettings"];
+const RESET_LINK_HOSTS = ["app-linova.firebaseapp.com", "app-linova.web.app"];
+const RESET_LINK_SCHEMES = ["linova"];
+
+const isTrustedResetLink = (url) => {
+  if (!url) return false;
+  try {
+    const normalized = new URL(url);
+    const host = normalized.host?.toLowerCase();
+    if (host && RESET_LINK_HOSTS.includes(host)) {
+      return true;
+    }
+    const scheme = normalized.protocol.replace(":", "").toLowerCase();
+    if (scheme && RESET_LINK_SCHEMES.includes(scheme)) {
+      return true;
+    }
+  } catch (error) {
+    const scheme = url.split(":")[0]?.toLowerCase();
+    if (scheme && RESET_LINK_SCHEMES.includes(scheme)) {
+      return true;
+    }
+  }
+  return false;
+};
 
 const HomeStack = () => (
   <Stack.Navigator
@@ -166,6 +189,9 @@ const AppNavigator = () => {
     };
 
     const handleUrl = (incomingUrl) => {
+      if (!isTrustedResetLink(incomingUrl)) {
+        return;
+      }
       const code = extractCode(incomingUrl);
       if (code) {
         navigateWithResetCode(code);

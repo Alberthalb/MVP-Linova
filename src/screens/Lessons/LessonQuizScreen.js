@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import CustomButton from "../../components/CustomButton";
 import { spacing, typography, radius } from "../../styles/theme";
 import { Feather } from "@expo/vector-icons";
@@ -12,6 +13,37 @@ import { AppContext } from "../../context/AppContext";
 import { saveLessonProgress } from "../../services/userService";
 
 const STORAGE_KEY = "@linova:lessonProgress";
+
+const getProgressKey = (uid) => (uid ? `${STORAGE_KEY}:${uid}` : STORAGE_KEY);
+
+const readProgressFromStorage = async (key) => {
+  try {
+    const secured = await SecureStore.getItemAsync(key);
+    if (secured) return JSON.parse(secured);
+  } catch (error) {
+    console.warn("[LessonQuiz] Falha ao ler SecureStore:", error);
+  }
+  try {
+    const fallback = await AsyncStorage.getItem(key);
+    return fallback ? JSON.parse(fallback) : {};
+  } catch (error) {
+    console.warn("[LessonQuiz] Falha ao ler AsyncStorage:", error);
+  }
+  return {};
+};
+
+const writeProgressToStorage = async (key, value) => {
+  const serialized = JSON.stringify(value);
+  try {
+    await SecureStore.setItemAsync(key, serialized, {
+      keychainService: key,
+    });
+    return;
+  } catch (error) {
+    console.warn("[LessonQuiz] Falha ao gravar SecureStore, usando AsyncStorage:", error);
+  }
+  await AsyncStorage.setItem(key, serialized);
+};
 
 const toPlainText = (value) => {
   if (value === null || value === undefined) return "";
@@ -129,6 +161,7 @@ const LessonQuizScreen = ({ navigation, route }) => {
   const progress = total > 0 ? (step + 1) / total : 0;
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const storageKey = useMemo(() => getProgressKey(currentUser?.uid), [currentUser?.uid]);
 
   const selectOption = (optionIndex) => {
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: optionIndex }));
@@ -175,13 +208,12 @@ const LessonQuizScreen = ({ navigation, route }) => {
     const correctAnswers = questions.filter((q) => answers[q.id] === q.correct).length;
     const score = total > 0 ? Math.round((correctAnswers / total) * 100) : 0;
     try {
-      const existing = await AsyncStorage.getItem(STORAGE_KEY);
-      const parsed = existing ? JSON.parse(existing) : {};
+      const parsed = await readProgressFromStorage(storageKey);
       const updated = {
         ...parsed,
         [lessonId]: { score, completed: true, lessonTitle },
       };
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      await writeProgressToStorage(storageKey, updated);
       if (currentUser?.uid) {
         await saveLessonProgress(currentUser.uid, lessonId, {
           lessonTitle,

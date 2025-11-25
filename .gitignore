@@ -49,6 +49,9 @@ GoogleService-Info.plist
 app.config.local.*
 app.local.json
 
+# internal docs (não publicar)
+README.internal.md
+
 # typescript
 *.tsbuildinfo
 
