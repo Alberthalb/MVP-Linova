@@ -305,9 +305,10 @@ const createStyles = (colors) =>
     },
     header: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-start",
       justifyContent: "space-between",
       gap: spacing.sm,
+      flexWrap: "wrap",
     },
     tag: {
       flexDirection: "row",
@@ -317,6 +318,7 @@ const createStyles = (colors) =>
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.xs,
       borderRadius: radius.sm,
+      alignSelf: "flex-start",
     },
     tagText: {
       color: colors.background,
