@@ -13,25 +13,86 @@ import { saveLessonProgress } from "../../services/userService";
 
 const STORAGE_KEY = "@linova:lessonProgress";
 
-const normalizeOptions = (options) => {
-  if (Array.isArray(options)) return options;
-  if (options && typeof options === "object") {
-    return Object.keys(options)
+const toPlainText = (value) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    return value.map((entry) => toPlainText(entry)).filter(Boolean).join(" ").trim();
+  }
+  if (typeof value === "object") {
+    const candidates = ["text", "label", "value", "title", "name"];
+    for (const candidate of candidates) {
+      if (value[candidate] !== undefined) {
+        const normalized = toPlainText(value[candidate]);
+        if (normalized) return normalized;
+      }
+    }
+    const nested = Object.keys(value)
       .sort()
-      .map((key) => options[key])
-      .map((value) => {
-        if (typeof value === "string") return value;
-        if (typeof value === "number") return String(value);
-        if (value && typeof value === "object") {
-          if (typeof value.text === "string") return value.text;
-          const nested = Object.values(value).find((entry) => typeof entry === "string");
-          if (nested) return nested;
-        }
-        return "";
-      })
-      .filter((value) => !!value);
+      .map((key) => toPlainText(value[key]))
+      .filter(Boolean);
+    return nested.join(" ").trim();
+  }
+  return "";
+};
+
+const collectOptionValues = (input) => {
+  if (input === null || input === undefined) return [];
+  if (typeof input === "string" || typeof input === "number" || typeof input === "boolean") {
+    const normalized = toPlainText(input);
+    return normalized ? [normalized] : [];
+  }
+  if (Array.isArray(input)) {
+    return input.flatMap((entry) => collectOptionValues(entry));
+  }
+  if (typeof input === "object") {
+    const displayKeys = ["text", "label", "value", "title", "name", "option", "optionText"];
+    for (const key of displayKeys) {
+      const candidate = input[key];
+      if (candidate === undefined) continue;
+      const isPrimitive =
+        typeof candidate === "string" || typeof candidate === "number" || typeof candidate === "boolean";
+      if (isPrimitive) {
+        const normalized = toPlainText(candidate);
+        if (normalized) return [normalized];
+      }
+    }
+    const nestedFromDisplay = displayKeys
+      .filter((key) => input[key] !== undefined)
+      .flatMap((key) => collectOptionValues(input[key]));
+    if (nestedFromDisplay.length) return nestedFromDisplay;
+    const keys = Object.keys(input).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return keys.flatMap((key) => collectOptionValues(input[key]));
   }
   return [];
+};
+
+const normalizeOptions = (options) => {
+  const collected = collectOptionValues(options);
+  return collected.filter((value, index) => value.length > 0 && collected.indexOf(value) === index);
+};
+
+const parseCorrectIndex = (value) => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
+    const asNumber = Number(trimmed);
+    if (Number.isFinite(asNumber)) return asNumber;
+    if (trimmed.length === 1) {
+      const code = trimmed.toUpperCase().charCodeAt(0) - 65;
+      if (code >= 0 && code < 26) return code;
+    }
+  }
+  return 0;
+};
+
+const clampCorrectIndex = (value, totalOptions) => {
+  const parsed = parseCorrectIndex(value);
+  if (!Number.isFinite(parsed)) return 0;
+  if (!totalOptions || totalOptions <= 1) return 0;
+  return Math.min(Math.max(parsed, 0), totalOptions - 1);
 };
 
 const normalizeQuiz = (quizData) => {
@@ -44,12 +105,13 @@ const normalizeQuiz = (quizData) => {
       .map((key) => quizData[key]);
   }
   return items.map((item, index) => {
-    const rawOptions = item.options ?? item.Options ?? [];
+    const rawOptions = item?.options ?? item?.Options ?? [];
+    const options = normalizeOptions(rawOptions);
     return {
-      id: item.id ?? index + 1,
-      question: item.question || "",
-      options: normalizeOptions(rawOptions),
-      correct: item.correct ?? 0,
+      id: String(item?.id ?? item?._id ?? index + 1),
+      question: toPlainText(item?.question ?? item?.Question) || `Pergunta ${index + 1}`,
+      options,
+      correct: clampCorrectIndex(item?.correct ?? item?.Correct ?? 0, options.length),
     };
   });
 };
@@ -168,7 +230,7 @@ const LessonQuizScreen = ({ navigation, route }) => {
                 const selected = answers[currentQuestion.id] === index;
                 return (
                   <TouchableOpacity
-                    key={`${currentQuestion.id}-${option}`}
+                    key={`${currentQuestion.id}-${index}`}
                     style={[styles.option, selected && styles.optionSelected]}
                     onPress={() => selectOption(index)}
                     activeOpacity={0.85}

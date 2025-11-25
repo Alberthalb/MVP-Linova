@@ -107,7 +107,7 @@ const LessonScreen = ({ route, navigation }) => {
   }, [lesson]);
 
   const handlePlaybackStatusUpdate = (status) => {
-    if (status.isLoaded && status.durationMillis && duration === null) {
+    if (status.isLoaded && status.durationMillis && status.durationMillis !== duration) {
       setDuration(status.durationMillis);
     }
     if (!status.isLoaded || !subtitleSegments.length) return;
@@ -145,7 +145,11 @@ const LessonScreen = ({ route, navigation }) => {
                 <Text style={styles.tagText}>
                   {duration
                     ? duration >= 60000
-                      ? `${Math.ceil(duration / 60000)} min`
+                      ? (() => {
+                          const minutes = Math.floor(duration / 60000);
+                          const seconds = Math.floor((duration % 60000) / 1000);
+                          return seconds > 0 ? `${minutes}m${seconds}s` : `${minutes}m`;
+                        })()
                       : `${Math.floor(duration / 1000)} s`
                     : lesson?.duration || "10 min"}
                 </Text>

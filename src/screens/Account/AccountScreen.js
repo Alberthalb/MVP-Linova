@@ -17,7 +17,6 @@ const AccountScreen = ({ navigation }) => {
   const [name, setName] = useState(fullName || userName || "");
   const [email, setEmail] = useState(userEmail || "");
   const [notifications, setNotifications] = useState(true);
-  const [autoSubs, setAutoSubs] = useState(true);
   const [statInfo, setStatInfo] = useState(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -136,13 +135,6 @@ const AccountScreen = ({ navigation }) => {
               <Text style={styles.prefSubtitle}>Lembretes e novidades{"\n"}(em desenvolvimento)</Text>
             </View>
             <Switch value={notifications} onValueChange={setNotifications} trackColor={{ true: theme.primary }} />
-          </View>
-          <View style={styles.row}>
-            <View style={styles.rowText}>
-              <Text style={styles.prefTitle}>Legendas automáticas</Text>
-              <Text style={styles.prefSubtitle}>Ativar ao iniciar os vídeos</Text>
-            </View>
-            <Switch value={autoSubs} onValueChange={setAutoSubs} trackColor={{ true: theme.primary }} />
           </View>
         </View>
 
