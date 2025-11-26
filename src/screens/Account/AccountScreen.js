@@ -25,6 +25,16 @@ const AccountScreen = ({ navigation }) => {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const summaryStats = progressStats || defaultSummaryStats;
 
+  const forceReauth = async () => {
+    try {
+      await logoutUser();
+    } catch (error) {
+      // ignore logout errors, will navigate anyway
+    }
+    const rootNavigator = navigation.getParent()?.getParent();
+    rootNavigator?.reset({ index: 0, routes: [{ name: "Login" }] });
+  };
+
   const handleSaveProfile = async () => {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
@@ -51,6 +61,17 @@ const AccountScreen = ({ navigation }) => {
         Alert.alert("Perfil atualizado", "Seu nome e email foram atualizados.");
       }
     } catch (error) {
+      if (error?.code === "auth/requires-recent-login") {
+        Alert.alert(
+          "Refaça o login",
+          "Por segurança, faça login novamente para alterar o email.",
+          [
+            { text: "Cancelar" },
+            { text: "Fazer login", onPress: forceReauth },
+          ]
+        );
+        return;
+      }
       Alert.alert("Erro ao atualizar", getFirebaseAuthErrorMessage(error));
     } finally {
       setSavingProfile(false);

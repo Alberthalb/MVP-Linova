@@ -11,6 +11,7 @@ import { canAccessLevel } from "../../utils/levels";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db, storage } from "../../services/firebase";
 import { getDownloadURL, ref } from "firebase/storage";
+import { saveLessonProgress } from "../../services/userService";
 
 const timeToMs = (timeString = "") => {
   const clean = timeString.replace(",", ".").trim();
@@ -61,7 +62,8 @@ const LessonScreen = ({ route, navigation }) => {
   const [showSubtitles, setShowSubtitles] = useState(true);
   const [loading, setLoading] = useState(!lesson);
   const [duration, setDuration] = useState(null);
-  const { level: userLevel } = useContext(AppContext);
+  const [watchSaved, setWatchSaved] = useState(false);
+  const { level: userLevel, lessonsCompleted = {}, currentUser } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const videoRef = useRef(null);
@@ -109,7 +111,7 @@ const LessonScreen = ({ route, navigation }) => {
     loadMedia();
   }, [lesson]);
 
-  const handlePlaybackStatusUpdate = (status) => {
+  const handlePlaybackStatusUpdate = async (status) => {
     if (status.isLoaded && status.durationMillis && status.durationMillis !== duration) {
       setDuration(status.durationMillis);
     }
@@ -122,8 +124,24 @@ const LessonScreen = ({ route, navigation }) => {
     if (text !== currentSubtitle) {
       setCurrentSubtitle(text);
     }
+    if (status.didJustFinish && lessonId && !watchSaved) {
+      setWatchSaved(true);
+      try {
+        if (currentUser?.uid) {
+          await saveLessonProgress(currentUser.uid, lessonId, {
+            lessonTitle: lesson?.title,
+            watched: true,
+          });
+        }
+      } catch (error) {
+        setWatchSaved(false);
+        console.warn("[Lesson] Falha ao salvar visualização:", error);
+      }
+    }
   };
 
+  const progressEntry = lessonsCompleted[lessonId] || {};
+  const hasWatched = !!(progressEntry.watched || progressEntry.completed || progressEntry.score !== undefined);
   const isLessonAccessible = canAccessLevel(userLevel, lesson?.level);
 
   useEffect(() => {
@@ -138,6 +156,14 @@ const LessonScreen = ({ route, navigation }) => {
       Alert.alert(
         "Conteúdo bloqueado",
         `Esta aula pertence ao nível ${lesson?.level || "superior"}. Complete seu nível atual (${userLevel}) para desbloquear.`
+      );
+      return;
+    }
+    if (!hasWatched) {
+      Alert.alert(
+        "Assista antes do quiz",
+        "Veja a aula até o final para liberar o quiz. Depois, você pode refazer quantas vezes quiser.",
+        [{ text: "Ok" }]
       );
       return;
     }

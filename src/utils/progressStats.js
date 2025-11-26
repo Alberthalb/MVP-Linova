@@ -5,9 +5,22 @@ export const mapProgressSnapshot = (snapshot) => {
     return defaultSummaryStats;
   }
   const uniqueDays = new Set();
+  let lessonsWatched = 0;
+  let activitiesCount = 0;
   snapshot.docs.forEach((docSnap) => {
     const data = docSnap.data();
     const timestamp = data?.updatedAt;
+    if (data?.watched) {
+      lessonsWatched += 1;
+    }
+    const hasQuizResult =
+      Number.isFinite(data?.score) ||
+      data?.completed === true ||
+      Number.isFinite(data?.totalQuestions) ||
+      (data?.answers && Object.keys(data.answers || {}).length > 0);
+    if (hasQuizResult) {
+      activitiesCount += 1;
+    }
     if (timestamp?.toDate) {
       const dayKey = timestamp.toDate().toISOString().slice(0, 10);
       uniqueDays.add(dayKey);
@@ -15,7 +28,7 @@ export const mapProgressSnapshot = (snapshot) => {
   });
   return {
     days: uniqueDays.size || 1,
-    lessons: snapshot.size,
-    activities: snapshot.size,
+    lessons: lessonsWatched,
+    activities: activitiesCount,
   };
 };

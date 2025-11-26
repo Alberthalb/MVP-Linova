@@ -265,6 +265,7 @@ const LessonQuizScreen = ({ navigation, route }) => {
           correctAnswers,
           totalQuestions: total,
           answers,
+          completed: true,
         });
       }
       let promotedLevel = null;
