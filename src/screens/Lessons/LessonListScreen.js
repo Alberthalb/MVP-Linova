@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Alert } from "react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Alert, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { spacing, typography, radius } from "../../styles/theme";
@@ -45,26 +45,25 @@ const LessonListScreen = ({ navigation }) => {
     return unsubscribe;
   }, []);
 
-  const filteredLessons = useMemo(() => {
-    return lessons.filter((item) => {
-      const matchesLevel =
-        filter === "Todas" || item.level?.toLowerCase() === filter.toLowerCase();
-      const matchesQuery = item.title.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesLevel && matchesQuery;
-    });
-  }, [filter, searchTerm, lessons]);
-
   useEffect(() => {
     if (currentLevel) {
       setFilter(currentLevel);
     }
   }, [currentLevel]);
 
+  const filteredLessons = useMemo(() => {
+    return lessons.filter((item) => {
+      const matchesLevel = filter === "Todas" || item.level?.toLowerCase() === filter.toLowerCase();
+      const matchesQuery = item.title.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesLevel && matchesQuery;
+    });
+  }, [filter, searchTerm, lessons]);
+
   const handleLessonPress = (item) => {
     if (!canAccessLevel(currentLevel, item.level)) {
       Alert.alert(
         "Aula indisponível",
-        `Esta aula pertence ao nível ${item.level}. Complete seu nível atual (${currentLevel}) para desbloquear.`,
+        `Esta aula pertence ao nível ${item.level}. Complete seu nível atual (${currentLevel}) para desbloquear.`
       );
       return;
     }
@@ -78,36 +77,39 @@ const LessonListScreen = ({ navigation }) => {
     </TouchableOpacity>
   );
 
-  return (
-    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.8}>
-          <Feather name="chevron-left" size={20} color={theme.primary} />
-          <Text style={styles.backButtonText}>Voltar</Text>
-        </TouchableOpacity>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.heading}>Aulas disponíveis</Text>
-            <Text style={styles.subheading}>
-              {friendlyName}, escolha o nível e encontre sua próxima aula.
-            </Text>
-          </View>
-          <View style={styles.filterRow}>
-            {availableLevels.map((tag) => {
-              const active = filter === tag;
-              return (
-                <TouchableOpacity
-                  key={tag}
-                  style={[styles.chip, active && styles.chipActive]}
-                  onPress={() => setFilter(tag)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{tag}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+  const renderHeader = () => (
+    <View>
+      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+        <Feather name="chevron-left" size={20} color={theme.primary} />
+        <Text style={styles.backButtonText}>Voltar</Text>
+      </TouchableOpacity>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.heading}>Aulas disponíveis</Text>
+          <Text style={styles.subheading}>{friendlyName}, escolha o nível e encontre sua próxima aula.</Text>
         </View>
-        <View style={styles.search}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+          keyboardShouldPersistTaps="handled"
+        >
+          {availableLevels.map((tag) => {
+            const active = filter === tag;
+            return (
+              <TouchableOpacity
+                key={tag}
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => setFilter(tag)}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{tag}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+      <View style={styles.search}>
         <Feather name="search" size={18} color={theme.muted} />
         <TextInput
           style={styles.searchInput}
@@ -117,33 +119,45 @@ const LessonListScreen = ({ navigation }) => {
           onChangeText={setSearchTerm}
         />
       </View>
-      {loading ? (
-        <View style={styles.loader}>
-          <ActivityIndicator color={theme.primary} />
-          <Text style={styles.empty}>Carregando aulas...</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredLessons}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={<Text style={styles.empty}>Nenhuma aula encontrada.</Text>}
-        />
-      )}
+    </View>
+  );
+
+  const listEmpty = loading ? (
+    <View style={styles.loader}>
+      <ActivityIndicator color={theme.primary} />
+      <Text style={styles.empty}>Carregando aulas...</Text>
+    </View>
+  ) : (
+    <Text style={styles.empty}>Nenhuma aula encontrada.</Text>
+  );
+
+  return (
+    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+      <FlatList
+        data={filteredLessons}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={styles.list}
+        ListHeaderComponent={renderHeader}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={listEmpty}
+      />
     </SafeAreaView>
   );
 };
 
 const createStyles = (colors) =>
   StyleSheet.create({
-    container: {
+    safe: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    list: {
       paddingHorizontal: spacing.layout,
       paddingTop: spacing.md,
-      paddingBottom: spacing.md,
+      paddingBottom: spacing.lg * 2,
+      gap: spacing.md,
     },
     heading: {
       fontSize: typography.heading,
@@ -159,6 +173,7 @@ const createStyles = (colors) =>
     },
     header: {
       gap: spacing.xs,
+      marginBottom: spacing.md,
     },
     backButton: {
       flexDirection: "row",
@@ -170,9 +185,6 @@ const createStyles = (colors) =>
       color: colors.primary,
       fontFamily: typography.fonts.body,
       fontWeight: "600",
-    },
-    list: {
-      gap: spacing.md,
     },
     card: {
       backgroundColor: colors.surface,
@@ -197,7 +209,7 @@ const createStyles = (colors) =>
       flexDirection: "row",
       gap: spacing.sm,
       marginTop: spacing.sm,
-      marginBottom: spacing.md,
+      paddingRight: spacing.sm,
     },
     chip: {
       paddingVertical: spacing.xs,
@@ -249,8 +261,7 @@ const createStyles = (colors) =>
       marginTop: spacing.lg,
     },
     loader: {
-      flex: 1,
-      justifyContent: "center",
+      paddingVertical: spacing.lg,
       alignItems: "center",
       gap: spacing.sm,
     },

@@ -51,6 +51,9 @@ const createStyles = (colors) =>
       justifyContent: "center",
       alignItems: "center",
       gap: spacing.xl,
+      width: "100%",
+      maxWidth: 560,
+      alignSelf: "center",
     },
     logoWrapper: {
       width: 140,
@@ -87,6 +90,7 @@ const createStyles = (colors) =>
     },
     actions: {
       width: "100%",
+      maxWidth: 420,
       gap: spacing.sm,
     },
     footer: {
