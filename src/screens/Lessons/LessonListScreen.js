@@ -71,7 +71,9 @@ const LessonListScreen = ({ navigation }) => {
   };
 
   const renderItem = ({ item }) => {
-    const completed = !!completedLessons[item.id];
+    const entry = completedLessons[item.id] || {};
+    const score = Number.isFinite(entry.score) ? entry.score : Number(entry.score);
+    const completed = entry.completed === true || (Number.isFinite(score) && score >= 70);
     return (
       <TouchableOpacity
         style={[styles.card, completed && styles.cardCompleted]}

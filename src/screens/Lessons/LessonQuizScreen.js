@@ -251,11 +251,12 @@ const LessonQuizScreen = ({ navigation, route }) => {
   const finishQuiz = async () => {
     const correctAnswers = questions.filter((q) => answers[q.id] === q.correct).length;
     const score = total > 0 ? Math.round((correctAnswers / total) * 100) : 0;
+    const passed = score >= 70;
     try {
       const parsed = await readProgressFromStorage(storageKey);
       const updated = {
         ...parsed,
-        [lessonId]: { score, completed: true, lessonTitle },
+        [lessonId]: { score, completed: passed, lessonTitle },
       };
       await writeProgressToStorage(storageKey, updated);
       if (currentUser?.uid) {
@@ -265,8 +266,21 @@ const LessonQuizScreen = ({ navigation, route }) => {
           correctAnswers,
           totalQuestions: total,
           answers,
-          completed: true,
+          completed: passed,
         });
+      }
+      const goToLessonsRoot = () =>
+        navigation.reset({
+          index: 1,
+          routes: [{ name: "Home" }, { name: "LessonList" }],
+        });
+      if (!passed) {
+        Alert.alert(
+          "Continue praticando",
+          `Você acertou ${correctAnswers}/${total} (${score}%). Tente novamente para alcançar 70% e liberar a conclusão.`,
+          [{ text: "Ok", onPress: goToLessonsRoot }]
+        );
+        return;
       }
       let promotedLevel = null;
       if (currentUser?.uid) {
@@ -276,11 +290,6 @@ const LessonQuizScreen = ({ navigation, route }) => {
       const message = promotedLevel
         ? `Você acertou ${correctAnswers}/${total} (${score}%) e avançou para o nível ${promotedLevel}!`
         : `Você acertou ${correctAnswers}/${total} (${score}%).`;
-      const goToLessonsRoot = () =>
-        navigation.reset({
-          index: 1,
-          routes: [{ name: "Home" }, { name: "LessonList" }],
-        });
       Alert.alert(title, message, [{ text: "Ok", onPress: goToLessonsRoot }]);
     } catch (error) {
       Alert.alert("Erro ao salvar", "Não foi possível salvar seu progresso local.");

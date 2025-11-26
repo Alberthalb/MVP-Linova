@@ -53,6 +53,27 @@ const parseSubtitleFile = (text = "") => {
   return segments;
 };
 
+const parseDurationText = (value) => {
+  if (!value) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const text = String(value).toLowerCase().trim();
+  const match = text.match(/(\d+)\s*([a-z]+)/);
+  if (!match) return null;
+  const amount = Number(match[1]);
+  const unit = match[2];
+  if (!Number.isFinite(amount)) return null;
+  if (unit.startsWith("min") || unit === "m") return amount * 60000;
+  if (unit.startsWith("s")) return amount * 1000;
+  if (unit.startsWith("h")) return amount * 3600000;
+  return null;
+};
+
+const parseResolutionWeight = (label = "") => {
+  const match = String(label).match(/(\d{3,4})p/i);
+  if (match) return Number(match[1]);
+  return Number.MAX_SAFE_INTEGER;
+};
+
 const LessonScreen = ({ route, navigation }) => {
   const lessonId = route?.params?.lessonId || route?.params?.lesson?.id;
   const [lesson, setLesson] = useState(route?.params?.lesson || null);
@@ -63,6 +84,9 @@ const LessonScreen = ({ route, navigation }) => {
   const [loading, setLoading] = useState(!lesson);
   const [duration, setDuration] = useState(null);
   const [watchSaved, setWatchSaved] = useState(false);
+  const [qualityOptions, setQualityOptions] = useState([]);
+  const [selectedQuality, setSelectedQuality] = useState(null);
+  const [videoUrlCache, setVideoUrlCache] = useState({});
   const { level: userLevel, lessonsCompleted = {}, currentUser } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -84,14 +108,62 @@ const LessonScreen = ({ route, navigation }) => {
     return unsubscribe;
   }, [lessonId]);
 
+  const normalizeQualities = (lessonData) => {
+    const options = [];
+    const appendOption = (label, path, value) => {
+      if (!path) return;
+      options.push({ label, path, value: value || label, weight: parseResolutionWeight(label) });
+    };
+    if (Array.isArray(lessonData?.videoVariants)) {
+      lessonData.videoVariants.forEach((item, index) => {
+        appendOption(item?.label || `Opção ${index + 1}`, item?.path, item?.value || item?.label || `q${index + 1}`);
+      });
+    } else if (lessonData?.videoVariants && typeof lessonData.videoVariants === "object") {
+      Object.entries(lessonData.videoVariants).forEach(([key, value], index) => {
+        if (typeof value === "string") {
+          appendOption(key, value, key);
+        } else if (value && typeof value === "object") {
+          appendOption(value.label || key, value.path, value.value || value.label || key);
+        }
+      });
+    }
+    appendOption("Padrão", lessonData?.videoPath, "default");
+    // Remove duplicados por path
+    const unique = [];
+    const seen = new Set();
+    options.forEach((opt) => {
+      if (!opt.path || seen.has(opt.path)) return;
+      seen.add(opt.path);
+      unique.push(opt);
+    });
+    return unique;
+  };
+
   useEffect(() => {
     const loadMedia = async () => {
       if (!lesson) return;
       try {
-        if (lesson.videoPath) {
-          const videoRefStorage = ref(storage, lesson.videoPath);
-          const url = await getDownloadURL(videoRefStorage);
-          setVideoUrl(url);
+        const qualities = normalizeQualities(lesson);
+        setQualityOptions(qualities);
+        const sortedQualities = [...qualities].sort((a, b) => a.weight - b.weight);
+        const lowest = sortedQualities[0];
+        const initialQuality = selectedQuality || lowest?.value || qualities[0]?.value || "default";
+        setSelectedQuality(initialQuality);
+        if (qualities.length) {
+          const target = qualities.find((q) => q.value === initialQuality) || qualities[0];
+          const cacheKey = target.path;
+          if (videoUrlCache[cacheKey]) {
+            setVideoUrl(videoUrlCache[cacheKey]);
+          } else {
+            const videoRefStorage = ref(storage, target.path);
+            const url = await getDownloadURL(videoRefStorage);
+            setVideoUrlCache((prev) => ({ ...prev, [cacheKey]: url }));
+            setVideoUrl(url);
+          }
+        }
+        if (!duration) {
+          const parsed = parseDurationText(lesson.duration || lesson.durationMs || lesson.durationMillis);
+          if (parsed) setDuration(parsed);
         }
         if (lesson.captionPath) {
           const captionRef = ref(storage, lesson.captionPath);
@@ -109,7 +181,48 @@ const LessonScreen = ({ route, navigation }) => {
       }
     };
     loadMedia();
-  }, [lesson]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lesson, selectedQuality]);
+
+  const changeQuality = async (value) => {
+    if (value === selectedQuality) return;
+    const next = qualityOptions.find((q) => q.value === value);
+    if (!next) return;
+    setSelectedQuality(value);
+    if (videoUrlCache[next.path]) {
+      setVideoUrl(videoUrlCache[next.path]);
+      return;
+    }
+    try {
+      const videoRefStorage = ref(storage, next.path);
+      const url = await getDownloadURL(videoRefStorage);
+      setVideoUrlCache((prev) => ({ ...prev, [next.path]: url }));
+      setVideoUrl(url);
+    } catch (error) {
+      console.warn("[Lesson] Falha ao trocar qualidade:", error);
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    const checkStatus = async () => {
+      if (!videoRef.current || !videoUrl) return;
+      try {
+        const status = await videoRef.current.getStatusAsync();
+        if (mounted && status?.durationMillis && status.durationMillis !== duration) {
+          setDuration(status.durationMillis);
+        }
+      } catch (error) {
+        // ignore
+      }
+    };
+    checkStatus();
+    const timer = setTimeout(checkStatus, 500);
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+    };
+  }, [videoUrl, duration]);
 
   const handlePlaybackStatusUpdate = async (status) => {
     if (status.isLoaded && status.durationMillis && status.durationMillis !== duration) {
@@ -137,6 +250,12 @@ const LessonScreen = ({ route, navigation }) => {
         setWatchSaved(false);
         console.warn("[Lesson] Falha ao salvar visualização:", error);
       }
+    }
+  };
+
+  const handleVideoLoad = (payload) => {
+    if (payload?.durationMillis && payload.durationMillis !== duration) {
+      setDuration(payload.durationMillis);
     }
   };
 
@@ -214,6 +333,23 @@ const LessonScreen = ({ route, navigation }) => {
                   <Text style={styles.videoBadgeText}>Carregando vídeo...</Text>
                 </View>
               )}
+              {qualityOptions.length > 1 && (
+                <View style={styles.qualityRow}>
+                  {qualityOptions.map((option) => {
+                    const active = option.value === selectedQuality;
+                    return (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={[styles.qualityChip, active && styles.qualityChipActive]}
+                        onPress={() => changeQuality(option.value)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={[styles.qualityText, active && styles.qualityTextActive]}>{option.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
               {videoUrl && (
                 <Video
                   ref={videoRef}
@@ -222,6 +358,9 @@ const LessonScreen = ({ route, navigation }) => {
                   useNativeControls
                   resizeMode="contain"
                   shouldPlay={false}
+                  progressUpdateIntervalMillis={250}
+                  preferredPeakBitrate={800000}
+                  onLoad={handleVideoLoad}
                   onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
                 />
               )}
@@ -242,7 +381,7 @@ const LessonScreen = ({ route, navigation }) => {
                 <Text style={styles.body}>{lesson.transcript}</Text>
               </View>
             )}
-            <CustomButton title="Fazer quiz" onPress={handleQuizPress} />
+            <CustomButton title="Realizar atividade" onPress={handleQuizPress} />
           </>
         )}
       </ScrollView>
@@ -295,6 +434,35 @@ const createStyles = (colors) =>
       borderRadius: radius.lg,
       overflow: "hidden",
       position: "relative",
+    },
+    qualityRow: {
+      position: "absolute",
+      top: spacing.sm,
+      right: spacing.sm,
+      flexDirection: "row",
+      gap: spacing.xs,
+      zIndex: 1,
+    },
+    qualityChip: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: radius.sm,
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    qualityChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    qualityText: {
+      fontSize: typography.small,
+      color: colors.text,
+      fontFamily: typography.fonts.body,
+      fontWeight: "600",
+    },
+    qualityTextActive: {
+      color: colors.background,
     },
     video: {
       flex: 1,

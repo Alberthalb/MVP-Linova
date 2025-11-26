@@ -13,12 +13,8 @@ export const mapProgressSnapshot = (snapshot) => {
     if (data?.watched) {
       lessonsWatched += 1;
     }
-    const hasQuizResult =
-      Number.isFinite(data?.score) ||
-      data?.completed === true ||
-      Number.isFinite(data?.totalQuestions) ||
-      (data?.answers && Object.keys(data.answers || {}).length > 0);
-    if (hasQuizResult) {
+    const score = Number.isFinite(data?.score) ? data.score : Number(data?.score);
+    if (Number.isFinite(score) && score >= 70) {
       activitiesCount += 1;
     }
     if (timestamp?.toDate) {
