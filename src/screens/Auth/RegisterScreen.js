@@ -101,7 +101,7 @@ const RegisterScreen = ({ navigation }) => {
             </View>
             <View style={styles.passwordRow}>
               <TextInput
-                style={[styles.input, styles.flex]}
+                style={[styles.passwordInput, styles.flex]}
                 placeholder="Senha"
                 value={password}
                 onChangeText={setPassword}
@@ -213,6 +213,15 @@ const createStyles = (theme) =>
       backgroundColor: theme.gray,
       borderRadius: 12,
       paddingHorizontal: spacing.md,
+      minHeight: 52,
+    },
+    passwordInput: {
+      paddingVertical: 0,
+      paddingHorizontal: 0,
+      backgroundColor: "transparent",
+      fontSize: typography.body,
+      color: theme.text,
+      fontFamily: typography.fonts.body,
     },
     footerLinkWrapper: {
       flexDirection: "row",
