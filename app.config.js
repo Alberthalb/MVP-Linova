@@ -14,6 +14,9 @@ const withFirebaseConfig = (extra = {}) => {
   return { ...extra, firebase };
 };
 
+const EAS_PROJECT_ID = process.env.EXPO_PUBLIC_EAS_PROJECT_ID || "41dd4109-384d-4c95-9b6a-f27875bcb306";
+const ANDROID_PACKAGE = process.env.EXPO_PUBLIC_ANDROID_PACKAGE || "com.linova.mvp";
+
 module.exports = ({ config }) => ({
   expo: {
     name: "MVP-LINOVA",
@@ -23,7 +26,7 @@ module.exports = ({ config }) => ({
     scheme: "linova",
     icon: "./assets/icon.png",
     userInterfaceStyle: "automatic",
-    newArchEnabled: true,
+    newArchEnabled: false,
     splash: {
       image: "./assets/splash-icon.png",
       resizeMode: "contain",
@@ -38,11 +41,15 @@ module.exports = ({ config }) => ({
         backgroundColor: "#ffffff",
       },
       edgeToEdgeEnabled: true,
+      package: ANDROID_PACKAGE,
     },
     web: {
       favicon: "./assets/favicon.png",
     },
-    extra: withFirebaseConfig(config?.extra),
+    extra: withFirebaseConfig({
+      ...(config?.extra || {}),
+      eas: { projectId: EAS_PROJECT_ID },
+    }),
     plugins: ["./plugins/disableForceDark"],
   },
 });
