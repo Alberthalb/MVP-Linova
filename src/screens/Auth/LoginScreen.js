@@ -19,10 +19,24 @@ const LoginScreen = ({ navigation }) => {
   const [step, setStep] = useState(1);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockUntil, setLockUntil] = useState(null);
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   const handleLogin = async () => {
+    const now = Date.now();
+    if (lockUntil && now < lockUntil) {
+      const remaining = Math.max(0, Math.ceil((lockUntil - now) / 1000));
+      Alert.alert("Aguarde", `Muitas tentativas. Tente novamente em ${remaining}s.`);
+      return;
+    }
     if (!email.trim() || !password.trim()) {
       Alert.alert("Campos obrigatórios", "Preencha email e senha para continuar.");
+      return;
+    }
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert("Email inválido", "Verifique o formato do email.");
       return;
     }
     setLoading(true);
@@ -32,8 +46,18 @@ const LoginScreen = ({ navigation }) => {
       setUserName(derivedName);
       setUserEmail(email);
       setLevel(null);
+      setFailedAttempts(0);
+      setLockUntil(null);
       navigation.replace("MainTabs");
     } catch (error) {
+      const attempts = failedAttempts + 1;
+      const shouldLock = attempts >= 5;
+      if (shouldLock) {
+        setLockUntil(Date.now() + 60 * 1000);
+        setFailedAttempts(0);
+      } else {
+        setFailedAttempts(attempts);
+      }
       Alert.alert("Erro ao entrar", getFirebaseAuthErrorMessage(error));
     } finally {
       setLoading(false);

@@ -35,6 +35,8 @@ const AccountScreen = ({ navigation }) => {
     rootNavigator?.reset({ index: 0, routes: [{ name: "Login" }] });
   };
 
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   const handleSaveProfile = async () => {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
@@ -44,6 +46,10 @@ const AccountScreen = ({ navigation }) => {
     }
     if (!/^[\p{L} ]+$/u.test(trimmedName)) {
       Alert.alert("Nome inválido", "Use apenas letras e espaços.");
+      return;
+    }
+    if (!emailRegex.test(trimmedEmail)) {
+      Alert.alert("Email inválido", "Verifique o formato do email.");
       return;
     }
     setSavingProfile(true);

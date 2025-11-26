@@ -22,6 +22,8 @@ const RegisterScreen = ({ navigation }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   const handleRegister = async () => {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
@@ -33,6 +35,18 @@ const RegisterScreen = ({ navigation }) => {
     }
     if (!/^[\p{L} ]+$/u.test(trimmedName)) {
       Alert.alert("Nome inválido", "Use apenas letras e espaços no campo de nome.");
+      return;
+    }
+    if (!emailRegex.test(trimmedEmail)) {
+      Alert.alert("Email inválido", "Verifique o formato do email.");
+      return;
+    }
+    if (trimmedPassword.length < 8) {
+      Alert.alert("Senha fraca", "Use pelo menos 8 caracteres.");
+      return;
+    }
+    if (!/[0-9]/.test(trimmedPassword) || !/[A-Za-z]/.test(trimmedPassword)) {
+      Alert.alert("Senha fraca", "Use letras e números para deixar a senha mais forte.");
       return;
     }
     if (trimmedPassword !== trimmedConfirm) {
