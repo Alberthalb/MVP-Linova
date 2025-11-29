@@ -1,4 +1,4 @@
-# Linova - MVP mobile de ingles
+# Linova - app mobile de ingles
 
 Experiencia mobile criada para validar a metodologia Linova: trilhas de aulas em video, legendas sincronizadas, transcricoes e quizzes que promovem o aluno quando domina o nivel. Tudo foi desenvolvido em Expo + React Native consumindo Firebase (Auth, Firestore e Storage).
 
@@ -70,4 +70,4 @@ App.js
 ## Quer explorar mais?
 - Arquitetura completa, modelos e rotinas operacionais estao documentados em `README.internal.md`.
 - Estrutura principal: `src/components`, `src/screens`, `src/services`, `src/utils`, `src/styles`.
-- Fique a vontade para abrir uma issue ou conversar se quiser ver este MVP em funcionamento ao vivo.
+- Fique a vontade para abrir uma issue ou conversar se quiser ver o Linova em funcionamento ao vivo.

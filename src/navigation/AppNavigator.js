@@ -15,7 +15,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { createOrUpdateUserProfile, getUserProfile } from "../services/userService";
 import { getDisplayName } from "../utils/userName";
 import { defaultSummaryStats, mapProgressSnapshot } from "../utils/progressStats";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "../services/firebase";
 import SplashScreen from "../screens/Splash/SplashScreen";
 import LoginScreen from "../screens/Auth/LoginScreen";
@@ -28,6 +28,8 @@ import HomeScreen from "../screens/Home/HomeScreen";
 import LessonListScreen from "../screens/Lessons/LessonListScreen";
 import LessonScreen from "../screens/Lessons/LessonScreen";
 import LessonQuizScreen from "../screens/Lessons/LessonQuizScreen";
+import ModuleListScreen from "../screens/Lessons/ModuleListScreen";
+import ModuleAssessmentScreen from "../screens/Lessons/ModuleAssessmentScreen";
 import TermsScreen from "../screens/Legal/TermsScreen";
 import PrivacyScreen from "../screens/Legal/PrivacyScreen";
 import AccountScreen from "../screens/Account/AccountScreen";
@@ -71,6 +73,8 @@ const HomeStack = () => (
     }}
   >
     <Stack.Screen name="Home" component={HomeScreen} />
+    <Stack.Screen name="ModuleList" component={ModuleListScreen} />
+    <Stack.Screen name="ModuleAssessment" component={ModuleAssessmentScreen} />
     <Stack.Screen name="LessonList" component={LessonListScreen} />
     <Stack.Screen name="Lesson" component={LessonScreen} />
     <Stack.Screen name="LessonQuiz" component={LessonQuizScreen} />
@@ -162,9 +166,13 @@ const AppNavigator = () => {
   const navigationRef = useRef(null);
   const pendingResetCode = useRef(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [lessonsCompleted, setLessonsCompleted] = useState({});
   const [progressStats, setProgressStats] = useState(defaultSummaryStats);
+  const [modules, setModules] = useState([]);
+  const [moduleUnlocks, setModuleUnlocks] = useState({});
+  const [selectedModuleId, setSelectedModuleId] = useState(null);
   const systemScheme = useColorScheme();
   const isDark = darkMode === null ? systemScheme === "dark" : darkMode;
   const palette = isDark ? darkColors : lightColors;
@@ -218,11 +226,15 @@ const AppNavigator = () => {
         let resolvedName = user.displayName || "";
         try {
           const profile = await getUserProfile(user.uid);
+          setUserProfile(profile || null);
           if (profile?.name) {
             resolvedName = profile.name;
           }
           if (typeof profile?.level !== "undefined") {
             setLevel(profile.level);
+          }
+          if (profile?.currentModuleId) {
+            setSelectedModuleId(profile.currentModuleId);
           }
           await createOrUpdateUserProfile(user.uid, {
             name: resolvedName,
@@ -240,6 +252,10 @@ const AppNavigator = () => {
         setLevel(null);
         setLessonsCompleted({});
         setProgressStats(defaultSummaryStats);
+        setModules([]);
+        setModuleUnlocks({});
+        setSelectedModuleId(null);
+        setUserProfile(null);
       }
       setAuthReady(true);
     });
@@ -267,6 +283,60 @@ const AppNavigator = () => {
     return unsubscribe;
   }, [currentUser?.uid]);
 
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setModuleUnlocks({});
+      return undefined;
+    }
+    const unlockRef = collection(db, "users", currentUser.uid, "moduleUnlocks");
+    const unsubscribe = onSnapshot(
+      unlockRef,
+      (snapshot) => {
+        const map = {};
+        snapshot.forEach((docSnap) => {
+          map[docSnap.id] = docSnap.data();
+        });
+        setModuleUnlocks(map);
+      },
+      () => setModuleUnlocks({})
+    );
+    return unsubscribe;
+  }, [currentUser?.uid]);
+
+  useEffect(() => {
+    const modulesQuery = query(collection(db, "modules"), orderBy("order", "asc"));
+    const unsubscribe = onSnapshot(
+      modulesQuery,
+      (snapshot) => {
+        const list = snapshot.docs.map((docSnap, index) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            title: data?.title || `Módulo ${index + 1}`,
+            description: data?.description || "",
+            levelTag: data?.level || data?.tag || null,
+            order: data?.order ?? index,
+          };
+        });
+        setModules(list);
+      },
+      () => setModules([])
+    );
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (selectedModuleId || !modules?.length) return;
+    const profileModuleId = userProfile?.currentModuleId;
+    const foundFromProfile = profileModuleId ? modules.find((item) => item.id === profileModuleId) : null;
+    const fallback = modules[0];
+    if (foundFromProfile) {
+      setSelectedModuleId(foundFromProfile.id);
+    } else if (fallback) {
+      setSelectedModuleId(fallback.id);
+    }
+  }, [modules, selectedModuleId, userProfile?.currentModuleId]);
+
   const contextValue = useMemo(
     () => ({
       level,
@@ -285,8 +355,27 @@ const AppNavigator = () => {
       authReady,
       lessonsCompleted,
       progressStats,
+      modules,
+      moduleUnlocks,
+      selectedModuleId,
+      setSelectedModuleId,
     }),
-    [level, userName, fullName, userEmail, darkMode, isDark, currentUser, authReady, lessonsCompleted, progressStats]
+    [
+      level,
+      userName,
+      fullName,
+      userEmail,
+      darkMode,
+      isDark,
+      currentUser,
+      authReady,
+      lessonsCompleted,
+      progressStats,
+      modules,
+      moduleUnlocks,
+      selectedModuleId,
+      setSelectedModuleId,
+    ]
   );
 
   const navigationTheme = useMemo(() => {

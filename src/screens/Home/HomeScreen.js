@@ -104,7 +104,7 @@ const HomeScreen = ({ navigation }) => {
             <Text style={styles.levelText}>{level || "Discoverer"}</Text>
           </TouchableOpacity>
           <View style={styles.heroActions}>
-            <TouchableOpacity style={styles.heroChip} activeOpacity={0.9} onPress={() => navigation.navigate("LessonList")}>
+            <TouchableOpacity style={styles.heroChip} activeOpacity={0.9} onPress={() => navigation.navigate("ModuleList")}>
               <Feather name="book-open" size={16} color="#FFFFFF" />
               <Text style={styles.heroChipText}>Aulas</Text>
             </TouchableOpacity>
@@ -116,7 +116,7 @@ const HomeScreen = ({ navigation }) => {
         </View>
 
           <View style={styles.actions}>
-            <CustomButton title="Ver aulas" onPress={() => navigation.navigate("LessonList")} />
+            <CustomButton title="Ver aulas" onPress={() => navigation.navigate("ModuleList")} />
             <CustomButton title="Conversação IA (Em breve)" variant="ghost" onPress={handleIaInDevelopment} />
           </View>
         </View>

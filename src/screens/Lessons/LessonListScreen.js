@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useState, useCallback } from "react";
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Alert, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -9,17 +9,41 @@ import { useThemeColors } from "../../hooks/useThemeColors";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "../../services/firebase";
 import { canAccessLevel } from "../../utils/levels";
+import CustomButton from "../../components/CustomButton";
 
-const LessonListScreen = ({ navigation }) => {
-  const { userName, level: currentLevel, lessonsCompleted: completedLessons = {} } = useContext(AppContext);
+const LessonListScreen = ({ navigation, route }) => {
+  const {
+    userName,
+    level: currentLevel,
+    lessonsCompleted: completedLessons = {},
+    modules = [],
+    moduleUnlocks = {},
+    selectedModuleId,
+    setSelectedModuleId,
+  } = useContext(AppContext);
   const friendlyName = getDisplayName(userName);
   const [filter, setFilter] = useState("Todas");
   const [searchTerm, setSearchTerm] = useState("");
   const [lessons, setLessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [availableLevels, setAvailableLevels] = useState(["Todas"]);
+  const [activeModuleId, setActiveModuleId] = useState(null);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const modulesEnabled = modules && modules.length > 0;
+  const firstModuleId = modulesEnabled ? modules[0]?.id : null;
+  const activeModule = useMemo(() => modules.find((item) => item.id === activeModuleId), [modules, activeModuleId]);
+
+  const isModuleUnlocked = useCallback(
+    (moduleId) => {
+      if (!modulesEnabled) return true;
+      if (!moduleId) return true;
+      if (moduleId === firstModuleId) return true;
+      const entry = moduleUnlocks?.[moduleId];
+      return entry?.passed === true || entry?.status === "unlocked";
+    },
+    [firstModuleId, moduleUnlocks, modulesEnabled]
+  );
 
   useEffect(() => {
     const lessonsQuery = query(collection(db, "lessons"), orderBy("order"));
@@ -33,6 +57,7 @@ const LessonListScreen = ({ navigation }) => {
             title: payload.title || "Aula",
             level: payload.level || "Discoverer",
             order: payload.order ?? 0,
+            moduleId: payload.moduleId || payload.module || null,
           };
         });
         setLessons(data);
@@ -51,13 +76,63 @@ const LessonListScreen = ({ navigation }) => {
     }
   }, [currentLevel]);
 
+  useEffect(() => {
+    const moduleFromRoute = route?.params?.moduleId;
+    if (moduleFromRoute && moduleFromRoute !== activeModuleId) {
+      setActiveModuleId(moduleFromRoute);
+      setSelectedModuleId(moduleFromRoute);
+    }
+  }, [route?.params?.moduleId]);
+
+  useEffect(() => {
+    if (!activeModuleId && selectedModuleId) {
+      setActiveModuleId(selectedModuleId);
+    }
+  }, [selectedModuleId, activeModuleId]);
+
+  useEffect(() => {
+    if (activeModuleId || !modules?.length) return;
+    const fallback = modules[0];
+    if (fallback?.id) {
+      setActiveModuleId(fallback.id);
+      setSelectedModuleId(fallback.id);
+    }
+  }, [modules, activeModuleId, setSelectedModuleId]);
+
+  useEffect(() => {
+    if (!modulesEnabled || !activeModuleId) return;
+    if (!isModuleUnlocked(activeModuleId)) {
+      Alert.alert(
+        "Módulo bloqueado",
+        "Complete a prova de capacidade para liberar este módulo.",
+        [
+          {
+            text: "Fazer prova",
+            onPress: () =>
+              navigation.replace("ModuleAssessment", {
+                moduleId: activeModuleId,
+                moduleTitle: activeModule?.title || "Módulo",
+              }),
+          },
+          { text: "Escolher módulo", onPress: () => navigation.replace("ModuleList") },
+        ],
+        { cancelable: true }
+      );
+    }
+  }, [activeModuleId, activeModule?.title, isModuleUnlocked, modulesEnabled, navigation]);
+
   const filteredLessons = useMemo(() => {
+    const targetModuleId = modulesEnabled ? activeModuleId || firstModuleId : null;
     return lessons.filter((item) => {
       const matchesLevel = filter === "Todas" || item.level?.toLowerCase() === filter.toLowerCase();
       const matchesQuery = item.title.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesLevel && matchesQuery;
+      const matchesModule =
+        !targetModuleId ||
+        item.moduleId === targetModuleId ||
+        (!item.moduleId && targetModuleId === firstModuleId);
+      return matchesLevel && matchesQuery && matchesModule;
     });
-  }, [filter, searchTerm, lessons]);
+  }, [filter, searchTerm, lessons, modulesEnabled, activeModuleId, firstModuleId]);
 
   const handleLessonPress = (item) => {
     if (!canAccessLevel(currentLevel, item.level)) {
@@ -104,6 +179,14 @@ const LessonListScreen = ({ navigation }) => {
         <View>
           <Text style={styles.heading}>Aulas disponíveis</Text>
           <Text style={styles.subheading}>{friendlyName}, escolha o nível e encontre sua próxima aula.</Text>
+          {modulesEnabled ? (
+            <View style={styles.moduleRow}>
+              <Text style={styles.moduleLabel}>M?dulo: {activeModule?.title || "Selecionar"}</Text>
+              <TouchableOpacity onPress={() => navigation.navigate("ModuleList")} activeOpacity={0.8}>
+                <Text style={styles.changeModule}>Trocar m?dulo</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
         <ScrollView
           horizontal
@@ -148,6 +231,18 @@ const LessonListScreen = ({ navigation }) => {
     <Text style={styles.empty}>Nenhuma aula encontrada.</Text>
   );
 
+  if (modulesEnabled && !activeModuleId) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+        <View style={styles.fallbackContainer}>
+          <Text style={styles.heading}>Escolha um módulo</Text>
+          <Text style={styles.subheading}>Selecione um módulo para listar as aulas correspondentes.</Text>
+          <CustomButton title="Ir para módulos" onPress={() => navigation.replace("ModuleList")} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <FlatList
@@ -187,6 +282,24 @@ const createStyles = (colors) =>
       fontSize: typography.body,
       color: colors.muted,
       fontFamily: typography.fonts.body,
+    },
+    moduleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      marginTop: spacing.xs,
+      flexWrap: "wrap",
+    },
+    moduleLabel: {
+      color: colors.text,
+      fontFamily: typography.fonts.body,
+      fontWeight: "700",
+    },
+    changeModule: {
+      color: colors.accent,
+      fontFamily: typography.fonts.body,
+      fontWeight: "700",
+      textDecorationLine: "underline",
     },
     header: {
       gap: spacing.xs,
@@ -309,6 +422,13 @@ const createStyles = (colors) =>
       paddingVertical: spacing.lg,
       alignItems: "center",
       gap: spacing.sm,
+    },
+    fallbackContainer: {
+      flex: 1,
+      padding: spacing.layout,
+      gap: spacing.sm,
+      justifyContent: "center",
+      backgroundColor: colors.background,
     },
   });
 

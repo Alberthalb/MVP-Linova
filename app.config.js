@@ -20,8 +20,8 @@ const ANDROID_PACKAGE = process.env.EXPO_PUBLIC_ANDROID_PACKAGE || "com.linova.m
 
 module.exports = ({ config }) => ({
   expo: {
-    name: "MVP-LINOVA",
-    slug: "MVP-LINOVA",
+    name: "Linova",
+    slug: "linova",
     version: "1.0.0",
     orientation: "default",
     scheme: "linova",

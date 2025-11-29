@@ -75,3 +75,18 @@ export const saveLessonProgress = async (uid, lessonId, payload = {}) => {
     { merge: true }
   );
 };
+
+export const saveModuleUnlock = async (uid, moduleId, payload = {}) => {
+  if (!uid || !moduleId) return;
+  const target = doc(db, "users", uid, "moduleUnlocks", String(moduleId));
+  await setDoc(
+    target,
+    {
+      ...payload,
+      passed: payload?.passed ?? true,
+      status: payload?.status || "unlocked",
+      unlockedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+};

@@ -87,9 +87,18 @@ const LessonScreen = ({ route, navigation }) => {
   const [qualityOptions, setQualityOptions] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState(null);
   const [videoUrlCache, setVideoUrlCache] = useState({});
-  const { level: userLevel, lessonsCompleted = {}, currentUser } = useContext(AppContext);
+  const { level: userLevel, lessonsCompleted = {}, currentUser, moduleUnlocks = {}, modules = [] } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const modulesEnabled = modules && modules.length > 0;
+  const firstModuleId = modulesEnabled ? modules[0]?.id : null;
+  const lessonModuleId = lesson?.moduleId || lesson?.module || null;
+  const isLessonModuleUnlocked = useMemo(() => {
+    if (!modulesEnabled || !lessonModuleId) return true;
+    if (lessonModuleId === firstModuleId) return true;
+    const entry = moduleUnlocks?.[lessonModuleId];
+    return entry?.passed === true || entry?.status === "unlocked";
+  }, [firstModuleId, lessonModuleId, moduleUnlocks, modulesEnabled]);
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -107,6 +116,18 @@ const LessonScreen = ({ route, navigation }) => {
     );
     return unsubscribe;
   }, [lessonId]);
+
+  useEffect(() => {
+    if (!modulesEnabled || !lessonModuleId) return;
+    if (!isLessonModuleUnlocked) {
+      Alert.alert(
+        "M��dulo bloqueado",
+        "Complete a prova de capacidade para liberar este m��dulo.",
+        [{ text: "Escolher m��dulo", onPress: () => navigation.replace("ModuleList") }],
+        { cancelable: false }
+      );
+    }
+  }, [isLessonModuleUnlocked, lessonModuleId, modulesEnabled, navigation]);
 
   const normalizeQualities = (lessonData) => {
     const options = [];
