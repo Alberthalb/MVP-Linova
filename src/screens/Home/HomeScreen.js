@@ -34,6 +34,17 @@ const HomeScreen = ({ navigation }) => {
   const [isIaModalVisible, setIaModalVisible] = useState(false);
   const [statInfo, setStatInfo] = useState(null);
   const [statType, setStatType] = useState(null);
+  const completedLessonsWithActivity = useMemo(() => {
+    let count = 0;
+    Object.values(lessonsCompleted || {}).forEach((entry) => {
+      const score = Number.isFinite(entry?.score) ? entry.score : Number(entry?.score);
+      const completed = entry?.completed === true;
+      if (completed || (Number.isFinite(score) && score >= 70)) {
+        count += 1;
+      }
+    });
+    return count;
+  }, [lessonsCompleted]);
   const [levelInfo, setLevelInfo] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lessonsMeta, setLessonsMeta] = useState({});
@@ -126,7 +137,7 @@ const HomeScreen = ({ navigation }) => {
   const handleStatPress = (type) => {
     const messages = {
       days: `Dias estudando: ${streakDays || 0}. Você já estudou em ${streakDays || 0} dia(s); continue para manter a sequência!`,
-      lessons: `Aulas concluidas: ${stats.lessons}.`,
+      lessons: `Aulas concluidas (com atividades): ${completedLessonsWithActivity}.`,
       activities: `Atividades respondidas: ${stats.activities}.`,
       xp: `Pontos acumulados: ${stats.xp || 0}. Cada aula vale 10 pontos.`,
     };
@@ -159,17 +170,13 @@ const HomeScreen = ({ navigation }) => {
       >
         <View style={styles.container}>
         <View style={styles.topBar}>
+          <TouchableOpacity style={styles.statPill} onPress={() => handleStatPress("lessons")} activeOpacity={0.8}>
+            <Feather name="book" size={14} color="#3D7FFC" />
+            <Text style={styles.statText}>{completedLessonsWithActivity}</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.statPill} onPress={() => handleStatPress("days")} activeOpacity={0.8}>
             <Feather name="sunrise" size={14} color="#FB923C" />
             <Text style={styles.statText}>{streakDays || 0}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.statPill} onPress={() => handleStatPress("lessons")} activeOpacity={0.8}>
-            <Feather name="book" size={14} color="#3D7FFC" />
-            <Text style={styles.statText}>{stats.lessons}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.statPill} onPress={() => handleStatPress("activities")} activeOpacity={0.8}>
-            <Feather name="check-circle" size={14} color="#FFB347" />
-            <Text style={styles.statText}>{stats.activities}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.statPill} onPress={() => handleStatPress("xp")} activeOpacity={0.8}>
             <Feather name="star" size={14} color="#8B5CF6" />
