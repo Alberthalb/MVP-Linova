@@ -22,7 +22,7 @@ import { spacing, typography, radius } from "../../styles/theme";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { AppContext } from "../../context/AppContext";
 import { canAccessLevel } from "../../utils/levels";
-import { collectionGroup, doc, limit, onSnapshot, query, where } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { db, storage } from "../../services/firebase";
 import { getDownloadURL, ref } from "firebase/storage";
 import { saveLessonProgress } from "../../services/userService";
@@ -593,7 +593,8 @@ const LessonScreen = ({ route, navigation }) => {
     return `${m}:${s}`;
   };
 
-  const renderPlayer = (fullscreen = false) => {
+  const renderPlayer = () => {
+    const fullscreen = isFullscreen;
     const wrapperStyle = fullscreen ? styles.fullscreenWrapper : styles.videoWrapper;
     const videoStyle = fullscreen ? styles.fullscreenVideo : styles.video;
     const controlColor = fullscreen ? "#fff" : theme.text;
@@ -685,7 +686,7 @@ const LessonScreen = ({ route, navigation }) => {
             <Feather name={isPlaying ? "pause" : "play"} size={20} color="#fff" />
           </TouchableOpacity>
         ) : null}
-        {showSubtitles && (
+        {showSubtitles && !controlsVisible && (
           <View
             style={[
               styles.subtitleOverlay,
@@ -744,10 +745,7 @@ const LessonScreen = ({ route, navigation }) => {
             <Feather name={fullscreen ? "minimize-2" : "maximize-2"} size={16} color={fullscreen ? "#fff" : controlColor} />
           </TouchableOpacity>
         </View>
-        <View
-          pointerEvents={controlsVisible ? "none" : "auto"}
-          style={[StyleSheet.absoluteFill, { zIndex: 4 }]}
-        >
+        <View pointerEvents={controlsVisible ? "none" : "auto"} style={[StyleSheet.absoluteFill, { zIndex: 4 }]}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={showControls} />
         </View>
       </View>
@@ -757,40 +755,45 @@ const LessonScreen = ({ route, navigation }) => {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <StatusBar hidden={isFullscreen} animated />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content} scrollEnabled={!isFullscreen}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.8}>
-          <Feather name="chevron-left" size={20} color={theme.primary} />
-          <Text style={styles.backButtonText}>Voltar</Text>
-        </TouchableOpacity>
-        {loading ? (
-          <View style={styles.loader}>
-            <ActivityIndicator color={theme.primary} />
-            <Text style={styles.subheading}>Carregando aula...</Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.header}>
-              <View>
-                <Text style={styles.heading}>{lesson?.title || "Aula"}</Text>
-                <Text style={styles.subheading}>Nivel: {lesson?.level || "A1"}</Text>
+      <View style={styles.screen}>
+        <View style={[styles.playerHolder, isFullscreen && styles.playerHolderFullscreen]}>
+          {renderPlayer()}
+        </View>
+        {!isFullscreen && (
+          <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+              <Feather name="chevron-left" size={20} color={theme.primary} />
+              <Text style={styles.backButtonText}>Voltar</Text>
+            </TouchableOpacity>
+            {loading ? (
+              <View style={styles.loader}>
+                <ActivityIndicator color={theme.primary} />
+                <Text style={styles.subheading}>Carregando aula...</Text>
               </View>
-              <View style={styles.tag}>
-                <Feather name="clock" size={14} color={theme.background} />
-                <Text style={styles.tagText}>{durationLabel}</Text>
-              </View>
-            </View>
-            {!isFullscreen && renderPlayer(false)}
-            {lesson?.transcript ? (
-              <View style={styles.transcript}>
-                <Text style={styles.sectionTitle}>Transcricao</Text>
-                <Text style={styles.body}>{lesson.transcript}</Text>
-              </View>
-            ) : null}
-            <CustomButton title="Realizar atividade" onPress={handleQuizPress} />
-          </>
+            ) : (
+              <>
+                <View style={styles.header}>
+                  <View>
+                    <Text style={styles.heading}>{lesson?.title || "Aula"}</Text>
+                    <Text style={styles.subheading}>Nivel: {lesson?.level || "A1"}</Text>
+                  </View>
+                  <View style={styles.tag}>
+                    <Feather name="clock" size={14} color={theme.background} />
+                    <Text style={styles.tagText}>{durationLabel}</Text>
+                  </View>
+                </View>
+                {lesson?.transcript ? (
+                  <View style={styles.transcript}>
+                    <Text style={styles.sectionTitle}>Transcricao</Text>
+                    <Text style={styles.body}>{lesson.transcript}</Text>
+                  </View>
+                ) : null}
+                <CustomButton title="Realizar atividade" onPress={handleQuizPress} />
+              </>
+            )}
+          </ScrollView>
         )}
-      </ScrollView>
-      {isFullscreen ? <View style={styles.fullscreenPortal}>{renderPlayer(true)}</View> : null}
+      </View>
     </SafeAreaView>
   );
 };
@@ -804,6 +807,18 @@ const createStyles = (colors) =>
     container: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    screen: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    playerHolder: {
+      backgroundColor: "#000",
+      position: "relative",
+    },
+    playerHolderFullscreen: {
+      flex: 1,
+      backgroundColor: "#000",
     },
     content: {
       paddingHorizontal: spacing.layout,
@@ -836,20 +851,24 @@ const createStyles = (colors) =>
     videoWrapper: {
       width: "100%",
       aspectRatio: 16 / 9,
-      backgroundColor: colors.surface,
-      borderRadius: radius.lg,
-      overflow: "hidden",
-      position: "relative",
-    },
-    fullscreenWrapper: {
-      ...StyleSheet.absoluteFillObject,
       backgroundColor: "#000",
       borderRadius: 0,
       overflow: "hidden",
+      position: "relative",
+      zIndex: 1,
+    },
+    fullscreenWrapper: {
       position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "#000",
+      borderRadius: 0,
+      overflow: "hidden",
       justifyContent: "center",
       zIndex: 99,
-      elevation: 12,
+      elevation: 20,
     },
     qualityRow: {
       position: "absolute",
@@ -905,7 +924,7 @@ const createStyles = (colors) =>
       position: "absolute",
       left: spacing.sm,
       right: spacing.sm,
-      bottom: spacing.md + spacing.lg + spacing.sm,
+      bottom: spacing.sm,
       paddingVertical: spacing.xs,
       paddingHorizontal: spacing.sm,
       backgroundColor: "rgba(0,0,0,0.5)",
@@ -913,12 +932,12 @@ const createStyles = (colors) =>
       zIndex: 3,
     },
     subtitleOverlayFullscreen: {
-      bottom: spacing.lg + spacing.md + spacing.sm,
+      bottom: spacing.md,
       left: spacing.md,
       right: spacing.md,
     },
     subtitleOverlayRaised: {
-      bottom: spacing.lg * 2 + spacing.lg + spacing.sm,
+      bottom: spacing.lg * 2,
     },
     subtitleOverlayText: {
       color: colors.background,
@@ -1086,12 +1105,6 @@ const createStyles = (colors) =>
       alignItems: "center",
       justifyContent: "center",
       gap: spacing.sm,
-    },
-    fullscreenPortal: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: "#000",
-      zIndex: 98,
-      elevation: 10,
     },
   });
 
