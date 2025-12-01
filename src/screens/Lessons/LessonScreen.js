@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Modal, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Video } from "expo-av";
 import { Feather } from "@expo/vector-icons";
@@ -90,6 +90,8 @@ const LessonScreen = ({ route, navigation }) => {
   const [qualityOptions, setQualityOptions] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState(null);
   const [videoUrlCache, setVideoUrlCache] = useState({});
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { level: userLevel, lessonsCompleted = {}, currentUser, moduleUnlocks = {}, modules = [] } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -347,6 +349,107 @@ const LessonScreen = ({ route, navigation }) => {
       : `${Math.floor(duration / 1000)} s`
     : lesson?.duration || "10 min";
 
+  const renderPlayer = (fullscreen = false) => {
+    const wrapperStyle = fullscreen ? styles.fullscreenWrapper : styles.videoWrapper;
+    const videoStyle = fullscreen ? styles.fullscreenVideo : styles.video;
+    const controlColor = fullscreen ? "#fff" : theme.text;
+    const controlBg = fullscreen ? "rgba(255,255,255,0.08)" : theme.surface;
+    const controlBorder = fullscreen ? "rgba(255,255,255,0.35)" : theme.border;
+    return (
+      <View style={wrapperStyle}>
+        {qualityOptions.length > 1 && (
+          <View style={styles.qualityRow}>
+            {qualityOptions.map((option) => {
+              const active = option.value === selectedQuality;
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.qualityChip,
+                    { backgroundColor: controlBg, borderColor: controlBorder },
+                    active && { backgroundColor: theme.primary, borderColor: theme.primary },
+                  ]}
+                  onPress={() => changeQuality(option.value)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.qualityText,
+                      { color: controlColor },
+                      active && { color: theme.background, fontWeight: "700" },
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+        <View style={styles.playerTopRow}>
+          <TouchableOpacity
+            onPress={() => setShowSubtitles((prev) => !prev)}
+            style={[
+              styles.subtitleToggle,
+              { backgroundColor: controlBg, borderColor: controlBorder },
+              fullscreen && styles.subtitleToggleFullscreen,
+            ]}
+            activeOpacity={0.8}
+          >
+            <Feather name={showSubtitles ? "eye" : "eye-off"} size={14} color={controlColor} />
+            <Text style={[styles.subtitleToggleText, { color: controlColor }, fullscreen && { color: "#fff" }]}>
+              {showSubtitles ? "Legendas on" : "Legendas off"}
+            </Text>
+          </TouchableOpacity>
+          {!fullscreen && (
+            <TouchableOpacity
+              onPress={() => setIsFullscreen(true)}
+              style={[styles.fullscreenButton, { backgroundColor: controlBg, borderColor: controlBorder }]}
+              activeOpacity={0.8}
+            >
+              <Feather name="maximize" size={16} color={controlColor} />
+            </TouchableOpacity>
+          )}
+          {fullscreen && (
+            <TouchableOpacity
+              onPress={() => setIsFullscreen(false)}
+              style={[styles.fullscreenButton, { backgroundColor: controlBg, borderColor: controlBorder }]}
+              activeOpacity={0.8}
+            >
+              <Feather name="x" size={18} color={controlColor} />
+            </TouchableOpacity>
+          )}
+        </View>
+        {!videoUrl && (
+          <View style={[videoStyle, styles.videoPlaceholder]}>
+            <Text style={styles.videoBadgeText}>{qualityOptions.length ? "Carregando video..." : "Video nao disponivel"}</Text>
+          </View>
+        )}
+        {videoUrl && (
+          <Video
+            ref={videoRef}
+            source={{ uri: videoUrl }}
+            style={videoStyle}
+            useNativeControls
+            resizeMode="contain"
+            shouldPlay={false}
+            progressUpdateIntervalMillis={250}
+            preferredPeakBitrate={800000}
+            onLoad={handleVideoLoad}
+            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+          />
+        )}
+        {showSubtitles && (
+          <View style={[styles.subtitleOverlay, fullscreen && styles.subtitleOverlayFullscreen]}>
+            <Text style={[styles.subtitleOverlayText, fullscreen && styles.subtitleOverlayTextFullscreen]}>
+              {currentSubtitle || "Carregando legendas..."}
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -371,54 +474,7 @@ const LessonScreen = ({ route, navigation }) => {
                 <Text style={styles.tagText}>{durationLabel}</Text>
               </View>
             </View>
-            <View style={styles.videoWrapper}>
-              {!videoUrl && (
-                <View style={[styles.video, styles.videoPlaceholder]}>
-                  <Text style={styles.videoBadgeText}>
-                    {qualityOptions.length ? "Carregando video..." : "Video nao disponivel"}
-                  </Text>
-                </View>
-              )}
-              {qualityOptions.length > 1 && (
-                <View style={styles.qualityRow}>
-                  {qualityOptions.map((option) => {
-                    const active = option.value === selectedQuality;
-                    return (
-                      <TouchableOpacity
-                        key={option.value}
-                        style={[styles.qualityChip, active && styles.qualityChipActive]}
-                        onPress={() => changeQuality(option.value)}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={[styles.qualityText, active && styles.qualityTextActive]}>{option.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-              {videoUrl && (
-                <Video
-                  ref={videoRef}
-                  source={{ uri: videoUrl }}
-                  style={styles.video}
-                  useNativeControls
-                  resizeMode="contain"
-                  shouldPlay={false}
-                  progressUpdateIntervalMillis={250}
-                  preferredPeakBitrate={800000}
-                  onLoad={handleVideoLoad}
-                  onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-                />
-              )}
-            </View>
-            <TouchableOpacity onPress={() => setShowSubtitles((prev) => !prev)} style={styles.subtitleButton} activeOpacity={0.9}>
-              <Text style={styles.subtitleButtonText}>{showSubtitles ? "Ocultar legendas" : "Mostrar legendas"}</Text>
-            </TouchableOpacity>
-            {showSubtitles && (
-              <View style={styles.subtitles}>
-                <Text style={styles.subtitleText}>{currentSubtitle || "Carregando legendas..."}</Text>
-              </View>
-            )}
+            {renderPlayer(false)}
             {lesson?.transcript ? (
               <View style={styles.transcript}>
                 <Text style={styles.sectionTitle}>Transcricao</Text>
@@ -429,6 +485,13 @@ const LessonScreen = ({ route, navigation }) => {
           </>
         )}
       </ScrollView>
+      {isFullscreen && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setIsFullscreen(false)}>
+          <View style={styles.fullscreenOverlay}>
+            <View style={[styles.fullscreenContent, { width: screenWidth, height: screenHeight }]}>{renderPlayer(true)}</View>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 };
@@ -479,6 +542,14 @@ const createStyles = (colors) =>
       overflow: "hidden",
       position: "relative",
     },
+    fullscreenWrapper: {
+      flex: 1,
+      backgroundColor: "#000",
+      borderRadius: 0,
+      overflow: "hidden",
+      position: "relative",
+      justifyContent: "center",
+    },
     qualityRow: {
       position: "absolute",
       top: spacing.sm,
@@ -511,6 +582,10 @@ const createStyles = (colors) =>
     video: {
       flex: 1,
     },
+    fullscreenVideo: {
+      flex: 1,
+      width: "100%",
+    },
     videoPlaceholder: {
       alignItems: "center",
       justifyContent: "center",
@@ -521,29 +596,61 @@ const createStyles = (colors) =>
       fontFamily: typography.fonts.body,
       fontWeight: "600",
     },
-    subtitleButton: {
-      alignSelf: "flex-start",
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.md,
-      backgroundColor: colors.gray,
-      borderRadius: 10,
+    subtitleOverlay: {
+      position: "absolute",
+      left: spacing.sm,
+      right: spacing.sm,
+      bottom: spacing.sm,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      borderRadius: radius.sm,
     },
-    subtitleButtonText: {
-      color: colors.text,
-      fontWeight: "600",
-      fontFamily: typography.fonts.body,
+    subtitleOverlayFullscreen: {
+      bottom: spacing.md,
     },
-    subtitles: {
-      backgroundColor: colors.surface,
-      padding: spacing.md,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    subtitleText: {
-      color: colors.text,
+    subtitleOverlayText: {
+      color: colors.background,
       fontFamily: typography.fonts.body,
       textAlign: "center",
+    },
+    subtitleOverlayTextFullscreen: {
+      color: "#fff",
+    },
+    subtitleToggle: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xs / 2,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      alignSelf: "flex-start",
+      borderRadius: radius.sm,
+      borderWidth: 1,
+    },
+    subtitleToggleFullscreen: {
+      backgroundColor: "rgba(0,0,0,0.35)",
+      borderColor: "rgba(255,255,255,0.35)",
+    },
+    subtitleToggleText: {
+      color: colors.text,
+      fontFamily: typography.fonts.body,
+      fontWeight: "600",
+    },
+    fullscreenButton: {
+      marginLeft: "auto",
+      padding: spacing.xs,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+    },
+    playerTopRow: {
+      position: "absolute",
+      top: spacing.sm,
+      left: spacing.sm,
+      right: spacing.sm,
+      flexDirection: "row",
+      alignItems: "center",
+      zIndex: 2,
+      gap: spacing.sm,
     },
     transcript: {
       backgroundColor: colors.surface,
@@ -592,6 +699,17 @@ const createStyles = (colors) =>
       alignItems: "center",
       justifyContent: "center",
       gap: spacing.sm,
+    },
+    fullscreenOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.85)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: spacing.sm,
+    },
+    fullscreenContent: {
+      width: "100%",
+      height: "100%",
     },
   });
 

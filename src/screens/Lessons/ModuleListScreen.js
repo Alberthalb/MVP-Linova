@@ -256,10 +256,11 @@ const ModuleListScreen = ({ navigation }) => {
           }
         />
         {filteredModules.length === 0 ? (
-          <CustomButton title="Ver aulas" onPress={() => navigation.navigate("LessonList")} />
+          <CustomButton title="Ver aulas" onPress={() => navigation.navigate("LessonList")} style={styles.buttonSpacing} />
         ) : (
           <CustomButton
             title="Ir para aulas do modulo atual"
+            style={styles.buttonSpacing}
             onPress={() =>
               handleEnterModule(filteredModules.find((item) => item.id === selectedModuleId) || filteredModules[0] || { id: null })
             }
@@ -349,6 +350,7 @@ const createStyles = (colors) =>
     },
     list: {
       paddingVertical: spacing.sm,
+      paddingBottom: spacing.lg,
       gap: spacing.sm,
       flexGrow: 1,
     },
@@ -512,6 +514,9 @@ const createStyles = (colors) =>
       fontFamily: typography.fonts.body,
       fontWeight: "700",
       textDecorationLine: "underline",
+    },
+    buttonSpacing: {
+      marginTop: spacing.md,
     },
   });
 
