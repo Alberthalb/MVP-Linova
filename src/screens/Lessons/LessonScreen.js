@@ -1,5 +1,7 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Modal, useWindowDimensions } from "react-native";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, StatusBar } from "react-native";
+import * as ScreenOrientation from "expo-screen-orientation";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Video } from "expo-av";
 import { Feather } from "@expo/vector-icons";
@@ -90,8 +92,10 @@ const LessonScreen = ({ route, navigation }) => {
   const [qualityOptions, setQualityOptions] = useState([]);
   const [selectedQuality, setSelectedQuality] = useState(null);
   const [videoUrlCache, setVideoUrlCache] = useState({});
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [positionMs, setPositionMs] = useState(0);
+  const [captionUrl, setCaptionUrl] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { level: userLevel, lessonsCompleted = {}, currentUser, moduleUnlocks = {}, modules = [] } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -105,6 +109,72 @@ const LessonScreen = ({ route, navigation }) => {
     return entry?.passed === true || entry?.status === "unlocked";
   }, [firstModuleId, lessonModuleId, moduleUnlocks, modulesEnabled]);
   const videoRef = useRef(null);
+  const textTracksConfig = useMemo(
+    () =>
+      captionUrl
+        ? [
+            {
+              uri: captionUrl,
+              type: "text/vtt",
+              language: "pt-BR",
+              title: "Portugues",
+            },
+          ]
+        : [],
+    [captionUrl]
+  );
+  const selectedTextTrack = useMemo(() => {
+    if (!captionUrl || !showSubtitles) return { type: "disabled" };
+    return { type: "language", value: "pt-BR" };
+  }, [captionUrl, showSubtitles]);
+  const forcePortrait = useCallback(async () => {
+    try {
+      await ScreenOrientation.unlockAsync();
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    } catch (error) {
+      // ignore when orientation API is unavailable
+    }
+  }, []);
+
+  const forceLandscape = useCallback(async () => {
+    try {
+      await ScreenOrientation.unlockAsync();
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
+    } catch (error) {
+      // ignore when orientation API is unavailable
+    }
+  }, []);
+  const exitFullscreen = useCallback(async () => {
+    setIsFullscreen(false);
+    await forcePortrait();
+  }, [forcePortrait]);
+  const enterFullscreen = useCallback(async () => {
+    setIsFullscreen(true);
+    await forceLandscape();
+  }, [forceLandscape]);
+
+  useFocusEffect(
+    useCallback(() => {
+      forcePortrait();
+      return () => {
+        forcePortrait();
+      };
+    }, [forcePortrait])
+  );
+
+  useEffect(() => {
+    const parentNav = navigation.getParent?.();
+    if (!parentNav) return undefined;
+    const prevStyleRef = { value: parentNav.getOptions?.().tabBarStyle };
+    if (isFullscreen) {
+      parentNav.setOptions({ tabBarStyle: { display: "none" } });
+    } else {
+      parentNav.setOptions({ tabBarStyle: prevStyleRef.value });
+    }
+    return () => {
+      parentNav.setOptions({ tabBarStyle: prevStyleRef.value });
+    };
+  }, [isFullscreen, navigation]);
 
   useEffect(() => {
     if (!lessonId) return undefined;
@@ -212,17 +282,22 @@ const LessonScreen = ({ route, navigation }) => {
         }
         const captionPath = lesson.captionUrl || lesson.captionPath || lesson.subtitleUrl || lesson.subtitlePath;
         if (captionPath) {
-          const captionUrl = isHttpPath(captionPath) ? captionPath : await getDownloadURL(ref(storage, captionPath));
-          const response = await fetch(captionUrl);
+          const resolvedCaptionUrl = isHttpPath(captionPath) ? captionPath : await getDownloadURL(ref(storage, captionPath));
+          const response = await fetch(resolvedCaptionUrl);
           const text = await response.text();
           const segments = parseSubtitleFile(text);
           setSubtitleSegments(segments);
+          setCaptionUrl(resolvedCaptionUrl);
         } else {
           setSubtitleSegments([]);
+          setCaptionUrl(null);
         }
         setCurrentSubtitle("");
       } catch (error) {
         console.warn("[Lesson] Falha ao carregar midia:", error);
+        setCaptionUrl(null);
+        setSubtitleSegments([]);
+        setCurrentSubtitle("");
       }
     };
     loadMedia();
@@ -274,6 +349,10 @@ const LessonScreen = ({ route, navigation }) => {
     if (status.isLoaded && status.durationMillis && status.durationMillis !== duration) {
       setDuration(status.durationMillis);
     }
+    if (status.isLoaded) {
+      setIsPlaying(status.isPlaying);
+      setPositionMs(status.positionMillis || 0);
+    }
     if (!status.isLoaded || !subtitleSegments.length) return;
     const { positionMillis } = status;
     const active = subtitleSegments.find((segment) => positionMillis >= segment.start && positionMillis <= segment.end);
@@ -302,6 +381,20 @@ const LessonScreen = ({ route, navigation }) => {
       setDuration(payload.durationMillis);
     }
   };
+
+  const togglePlayPause = useCallback(async () => {
+    if (!videoRef.current) return;
+    try {
+      const status = await videoRef.current.getStatusAsync();
+      if (status.isPlaying) {
+        await videoRef.current.pauseAsync();
+      } else {
+        await videoRef.current.playAsync();
+      }
+    } catch (error) {
+      // ignore playback toggle errors
+    }
+  }, []);
 
   const progressEntry = lessonsCompleted[lessonId] || {};
   const hasWatched = !!(progressEntry.watched || progressEntry.completed || progressEntry.score !== undefined);
@@ -349,6 +442,15 @@ const LessonScreen = ({ route, navigation }) => {
       : `${Math.floor(duration / 1000)} s`
     : lesson?.duration || "10 min";
 
+  const formatTime = (ms) => {
+    const totalSeconds = Math.floor((ms || 0) / 1000);
+    const m = Math.floor(totalSeconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const s = (totalSeconds % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
   const renderPlayer = (fullscreen = false) => {
     const wrapperStyle = fullscreen ? styles.fullscreenWrapper : styles.videoWrapper;
     const videoStyle = fullscreen ? styles.fullscreenVideo : styles.video;
@@ -358,7 +460,7 @@ const LessonScreen = ({ route, navigation }) => {
     return (
       <View style={wrapperStyle}>
         {qualityOptions.length > 1 && (
-          <View style={styles.qualityRow}>
+          <View style={styles.qualityRow} pointerEvents="box-none">
             {qualityOptions.map((option) => {
               const active = option.value === selectedQuality;
               return (
@@ -401,24 +503,6 @@ const LessonScreen = ({ route, navigation }) => {
               {showSubtitles ? "Legendas on" : "Legendas off"}
             </Text>
           </TouchableOpacity>
-          {!fullscreen && (
-            <TouchableOpacity
-              onPress={() => setIsFullscreen(true)}
-              style={[styles.fullscreenButton, { backgroundColor: controlBg, borderColor: controlBorder }]}
-              activeOpacity={0.8}
-            >
-              <Feather name="maximize" size={16} color={controlColor} />
-            </TouchableOpacity>
-          )}
-          {fullscreen && (
-            <TouchableOpacity
-              onPress={() => setIsFullscreen(false)}
-              style={[styles.fullscreenButton, { backgroundColor: controlBg, borderColor: controlBorder }]}
-              activeOpacity={0.8}
-            >
-              <Feather name="x" size={18} color={controlColor} />
-            </TouchableOpacity>
-          )}
         </View>
         {!videoUrl && (
           <View style={[videoStyle, styles.videoPlaceholder]}>
@@ -430,29 +514,49 @@ const LessonScreen = ({ route, navigation }) => {
             ref={videoRef}
             source={{ uri: videoUrl }}
             style={videoStyle}
-            useNativeControls
+            useNativeControls={false}
             resizeMode="contain"
             shouldPlay={false}
             progressUpdateIntervalMillis={250}
             preferredPeakBitrate={800000}
             onLoad={handleVideoLoad}
             onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+            textTracks={textTracksConfig}
+            selectedTextTrack={selectedTextTrack}
           />
         )}
+        {videoUrl ? (
+          <TouchableOpacity style={styles.playPauseCenter} onPress={togglePlayPause} activeOpacity={0.85}>
+            <Feather name={isPlaying ? "pause" : "play"} size={20} color="#fff" />
+          </TouchableOpacity>
+        ) : null}
         {showSubtitles && (
-          <View style={[styles.subtitleOverlay, fullscreen && styles.subtitleOverlayFullscreen]}>
+          <View style={[styles.subtitleOverlay, fullscreen && styles.subtitleOverlayFullscreen]} pointerEvents="none">
             <Text style={[styles.subtitleOverlayText, fullscreen && styles.subtitleOverlayTextFullscreen]}>
               {currentSubtitle || "Carregando legendas..."}
             </Text>
           </View>
         )}
+        <View style={styles.playerBottomRow}>
+          <Text style={styles.progressLabel}>
+            {formatTime(positionMs)} / {formatTime(duration)}
+          </Text>
+          <TouchableOpacity
+            style={[styles.fullscreenButton, { backgroundColor: fullscreen ? "rgba(255,255,255,0.2)" : controlBg, borderColor: controlBorder }]}
+            onPress={fullscreen ? exitFullscreen : enterFullscreen}
+            activeOpacity={0.9}
+          >
+            <Feather name={fullscreen ? "minimize-2" : "maximize-2"} size={16} color={fullscreen ? "#fff" : controlColor} />
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <StatusBar hidden={isFullscreen} animated />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} scrollEnabled={!isFullscreen}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.8}>
           <Feather name="chevron-left" size={20} color={theme.primary} />
           <Text style={styles.backButtonText}>Voltar</Text>
@@ -474,7 +578,7 @@ const LessonScreen = ({ route, navigation }) => {
                 <Text style={styles.tagText}>{durationLabel}</Text>
               </View>
             </View>
-            {renderPlayer(false)}
+            {!isFullscreen && renderPlayer(false)}
             {lesson?.transcript ? (
               <View style={styles.transcript}>
                 <Text style={styles.sectionTitle}>Transcricao</Text>
@@ -485,13 +589,7 @@ const LessonScreen = ({ route, navigation }) => {
           </>
         )}
       </ScrollView>
-      {isFullscreen && (
-        <Modal visible transparent animationType="fade" onRequestClose={() => setIsFullscreen(false)}>
-          <View style={styles.fullscreenOverlay}>
-            <View style={[styles.fullscreenContent, { width: screenWidth, height: screenHeight }]}>{renderPlayer(true)}</View>
-          </View>
-        </Modal>
-      )}
+      {isFullscreen ? <View style={styles.fullscreenPortal}>{renderPlayer(true)}</View> : null}
     </SafeAreaView>
   );
 };
@@ -543,12 +641,14 @@ const createStyles = (colors) =>
       position: "relative",
     },
     fullscreenWrapper: {
-      flex: 1,
+      ...StyleSheet.absoluteFillObject,
       backgroundColor: "#000",
       borderRadius: 0,
       overflow: "hidden",
-      position: "relative",
+      position: "absolute",
       justifyContent: "center",
+      zIndex: 99,
+      elevation: 12,
     },
     qualityRow: {
       position: "absolute",
@@ -585,6 +685,7 @@ const createStyles = (colors) =>
     fullscreenVideo: {
       flex: 1,
       width: "100%",
+      height: "100%",
     },
     videoPlaceholder: {
       alignItems: "center",
@@ -605,9 +706,12 @@ const createStyles = (colors) =>
       paddingHorizontal: spacing.sm,
       backgroundColor: "rgba(0,0,0,0.5)",
       borderRadius: radius.sm,
+      zIndex: 3,
     },
     subtitleOverlayFullscreen: {
       bottom: spacing.md,
+      left: spacing.md,
+      right: spacing.md,
     },
     subtitleOverlayText: {
       color: colors.background,
@@ -616,6 +720,44 @@ const createStyles = (colors) =>
     },
     subtitleOverlayTextFullscreen: {
       color: "#fff",
+    },
+    playPauseCenter: {
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      transform: [{ translateX: -24 }, { translateY: -24 }],
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.6)",
+      backgroundColor: "rgba(0,0,0,0.35)",
+      zIndex: 3,
+    },
+    playerBottomRow: {
+      position: "absolute",
+      bottom: spacing.sm,
+      left: spacing.sm,
+      right: spacing.sm,
+      zIndex: 3,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      backgroundColor: "rgba(0,0,0,0.35)",
+      borderRadius: radius.sm,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.25)",
+      gap: spacing.sm,
+    },
+    progressLabel: {
+      fontFamily: typography.fonts.body,
+      fontSize: typography.small,
+      color: colors.background,
+      minWidth: 120,
     },
     subtitleToggle: {
       flexDirection: "row",
@@ -637,10 +779,14 @@ const createStyles = (colors) =>
       fontWeight: "600",
     },
     fullscreenButton: {
-      marginLeft: "auto",
-      padding: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
       borderRadius: radius.sm,
       borderWidth: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      minWidth: 42,
     },
     playerTopRow: {
       position: "absolute",
@@ -700,16 +846,11 @@ const createStyles = (colors) =>
       justifyContent: "center",
       gap: spacing.sm,
     },
-    fullscreenOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.85)",
-      justifyContent: "center",
-      alignItems: "center",
-      padding: spacing.sm,
-    },
-    fullscreenContent: {
-      width: "100%",
-      height: "100%",
+    fullscreenPortal: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "#000",
+      zIndex: 98,
+      elevation: 10,
     },
   });
 
