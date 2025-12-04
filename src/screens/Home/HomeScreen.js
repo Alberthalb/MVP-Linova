@@ -9,8 +9,7 @@ import { getDisplayName } from "../../utils/userName";
 import { useThemeColors, useIsDarkMode } from "../../hooks/useThemeColors";
 import { defaultSummaryStats } from "../../utils/progressStats";
 import { normalizeLevel, LEVEL_SEQUENCE } from "../../utils/levels";
-import { collectionGroup, onSnapshot } from "firebase/firestore";
-import { db } from "../../services/firebase";
+import { supabase } from "../../services/supabase";
 
 const min100 = (value) => Math.max(0, Math.min(100, value));
 
@@ -111,28 +110,25 @@ const HomeScreen = ({ navigation }) => {
   };
   const closeIaModal = () => setIaModalVisible(false);
   useEffect(() => {
-    const lessonsRef = collectionGroup(db, "lessons");
-    const unsubscribe = onSnapshot(
-      lessonsRef,
-      (snapshot) => {
-        const map = {};
-        const counts = {};
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          const moduleId = data?.moduleId || data?.module || null;
-          map[docSnap.id] = moduleId;
-          const key = moduleId || null;
-          counts[key] = (counts[key] || 0) + 1;
-        });
-        setLessonsMeta(map);
-        setModuleLessonCounts(counts);
-      },
-      () => {
+    const fetchLessonsMeta = async () => {
+      const { data, error } = await supabase.from("lessons").select("id,module_id,module");
+      if (error) {
         setLessonsMeta({});
         setModuleLessonCounts({});
+        return;
       }
-    );
-    return unsubscribe;
+      const map = {};
+      const counts = {};
+      (data || []).forEach((row) => {
+        const moduleId = row.module_id || row.module || null;
+        map[row.id] = moduleId;
+        const key = moduleId || null;
+        counts[key] = (counts[key] || 0) + 1;
+      });
+      setLessonsMeta(map);
+      setModuleLessonCounts(counts);
+    };
+    fetchLessonsMeta();
   }, []);
   const handleStatPress = (type) => {
     const messages = {

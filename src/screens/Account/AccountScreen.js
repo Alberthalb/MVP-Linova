@@ -8,7 +8,6 @@ import { spacing, typography, radius } from "../../styles/theme";
 import { getDisplayName } from "../../utils/userName";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { logoutUser, deleteAccount, updateUserAccount } from "../../services/authService";
-import { getFirebaseAuthErrorMessage } from "../../utils/firebaseErrorMessage";
 import { defaultSummaryStats } from "../../utils/progressStats";
 
 const AccountScreen = ({ navigation }) => {
@@ -20,8 +19,6 @@ const AccountScreen = ({ navigation }) => {
   const [notifications, setNotifications] = useState(true);
   const [statInfo, setStatInfo] = useState(null);
   const [savingProfile, setSavingProfile] = useState(false);
-  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [deletePassword, setDeletePassword] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
   const summaryStats = progressStats || defaultSummaryStats;
 
@@ -59,15 +56,12 @@ const AccountScreen = ({ navigation }) => {
       setUserName(getDisplayName(trimmedName, trimmedEmail));
       setUserEmail(trimmedEmail);
       if (result?.emailPendingVerification) {
-        Alert.alert(
-          "Verifique seu email",
-          `Enviamos um link para ${trimmedEmail}. Confirme para concluir a troca de email.`
-        );
+        Alert.alert("Verifique seu email", `Enviamos um link para ${trimmedEmail}. Confirme para concluir a troca de email.`);
       } else {
         Alert.alert("Perfil atualizado", "Seu nome e email foram atualizados.");
       }
     } catch (error) {
-      if (error?.code === "auth/requires-recent-login") {
+      if (error?.message?.toLowerCase()?.includes("reauth")) {
         Alert.alert(
           "Refaça o login",
           "Por segurança, faça login novamente para alterar o email.",
@@ -78,7 +72,7 @@ const AccountScreen = ({ navigation }) => {
         );
         return;
       }
-      Alert.alert("Erro ao atualizar", getFirebaseAuthErrorMessage(error));
+      Alert.alert("Erro ao atualizar", error?.message || "Não foi possível atualizar seu perfil.");
     } finally {
       setSavingProfile(false);
     }
@@ -98,14 +92,14 @@ const AccountScreen = ({ navigation }) => {
       const rootNavigator = navigation.getParent()?.getParent();
       rootNavigator?.reset({ index: 0, routes: [{ name: "Welcome" }] });
     } catch (error) {
-      Alert.alert("Erro ao sair", getFirebaseAuthErrorMessage(error));
+      Alert.alert("Erro ao sair", error?.message || "Não foi possível sair.");
     }
   };
 
   const handleSummaryPress = (type) => {
     const messages = {
-      days: `Dias em que voce estudou: ${summaryStats.days}.`,
-      lessons: `Aulas concluidas: ${summaryStats.lessons}.`,
+      days: `Dias em que você estudou: ${summaryStats.days}.`,
+      lessons: `Aulas concluídas: ${summaryStats.lessons}.`,
       activities: `Atividades respondidas: ${summaryStats.activities}.`,
       xp: `Pontos acumulados: ${summaryStats.xp || 0}. Cada aula vale 10 pontos.`,
     };
@@ -113,24 +107,20 @@ const AccountScreen = ({ navigation }) => {
   };
 
   const handleDeleteAccount = () => {
-    setDeletePassword("");
-    setDeleteModalVisible(true);
+    Alert.alert("Excluir conta", "Essa ação é permanente. Deseja prosseguir?", [
+      { text: "Cancelar", style: "cancel" },
+      { text: "Excluir", style: "destructive", onPress: confirmDeleteAccount },
+    ]);
   };
 
   const confirmDeleteAccount = async () => {
-    if (!deletePassword.trim()) {
-      Alert.alert("Senha obrigatória", "Informe sua senha para confirmar a exclusão.");
-      return;
-    }
     setDeleteLoading(true);
     try {
-      await deleteAccount(deletePassword.trim());
-      setDeleteModalVisible(false);
-      setDeletePassword("");
+      await deleteAccount();
       const rootNavigator = navigation.getParent()?.getParent();
       rootNavigator?.reset({ index: 0, routes: [{ name: "Welcome" }] });
     } catch (error) {
-      Alert.alert("Erro ao excluir", getFirebaseAuthErrorMessage(error));
+      Alert.alert("Erro ao excluir", error?.message || "Não foi possível excluir sua conta.");
     } finally {
       setDeleteLoading(false);
     }
@@ -187,12 +177,12 @@ const AccountScreen = ({ navigation }) => {
               <Text style={styles.summaryValue}>{summaryStats.xp || 0} pontos</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.summaryHint}>Esses numeros refletem seu uso recente e ajudam a acompanhar seu progresso.</Text>
+          <Text style={styles.summaryHint}>Esses números refletem seu uso recente e ajudam a acompanhar seu progresso.</Text>
         </View>
 
         <CustomButton title="Alterar senha" variant="ghost" onPress={() => navigation.navigate("ChangePassword")} />
         <CustomButton title="Sair da conta" variant="ghost" onPress={handleLogout} />
-        <CustomButton title="Excluir conta" variant="ghost" onPress={handleDeleteAccount} />
+        <CustomButton title={deleteLoading ? "Excluindo..." : "Excluir conta"} variant="ghost" onPress={handleDeleteAccount} disabled={deleteLoading} />
       </ScrollView>
       <Modal transparent animationType="fade" visible={!!statInfo} onRequestClose={() => setStatInfo(null)} statusBarTranslucent>
         <View style={styles.modalOverlay}>
@@ -202,30 +192,6 @@ const AccountScreen = ({ navigation }) => {
             <TouchableOpacity style={styles.modalButton} activeOpacity={0.8} onPress={() => setStatInfo(null)}>
               <Text style={styles.modalButtonText}>OK</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-      <Modal transparent animationType="fade" visible={deleteModalVisible} onRequestClose={() => setDeleteModalVisible(false)} statusBarTranslucent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Excluir conta</Text>
-            <Text style={styles.modalText}>Essa ação é permanente. Digite sua senha para confirmar.</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Senha atual"
-              secureTextEntry
-              value={deletePassword}
-              onChangeText={setDeletePassword}
-              autoCapitalize="none"
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={[styles.modalActionButton, styles.modalActionGhost]} onPress={() => setDeleteModalVisible(false)} disabled={deleteLoading}>
-                <Text style={[styles.modalActionText, styles.modalActionGhostText]}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalActionButton} onPress={confirmDeleteAccount} disabled={deleteLoading}>
-                <Text style={styles.modalActionText}>{deleteLoading ? "Excluindo..." : "Excluir"}</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </Modal>

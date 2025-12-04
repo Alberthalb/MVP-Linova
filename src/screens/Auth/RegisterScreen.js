@@ -9,7 +9,6 @@ import { AppContext } from "../../context/AppContext";
 import { getDisplayName } from "../../utils/userName";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { registerUser } from "../../services/authService";
-import { getFirebaseAuthErrorMessage } from "../../utils/firebaseErrorMessage";
 
 const RegisterScreen = ({ navigation }) => {
   const { setUserName, setUserEmail, setFullName } = useContext(AppContext);
@@ -63,7 +62,7 @@ const RegisterScreen = ({ navigation }) => {
       Alert.alert("Conta criada", "Vamos descobrir seu nível para personalizar o conteúdo.");
       navigation.replace("LevelQuiz");
     } catch (error) {
-      Alert.alert("Erro ao cadastrar", getFirebaseAuthErrorMessage(error));
+      Alert.alert("Erro ao cadastrar", error?.message || "Não foi possível criar a conta.");
     } finally {
       setLoading(false);
     }
@@ -126,7 +125,11 @@ const RegisterScreen = ({ navigation }) => {
                 <SvgUri
                   width={24}
                   height={24}
-                  uri={showPassword ? Image.resolveAssetSource(require("../../../assets/open-eye.svg")).uri : Image.resolveAssetSource(require("../../../assets/close-eye.svg")).uri}
+                  uri={
+                    showPassword
+                      ? Image.resolveAssetSource(require("../../../assets/open-eye.svg")).uri
+                      : Image.resolveAssetSource(require("../../../assets/close-eye.svg")).uri
+                  }
                   fill={theme.text}
                 />
               </TouchableOpacity>

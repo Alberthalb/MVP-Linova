@@ -2,16 +2,15 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
-const withFirebaseConfig = (extra = {}) => {
-  const firebase = {
-    apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "",
-    authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
-    projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "",
-    storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "",
-    messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "",
-    appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "",
+const withSupabaseConfig = (extra = {}) => {
+  const supabase = {
+    url: process.env.EXPO_PUBLIC_SUPABASE_URL || "",
+    anonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "",
+    videoBucket: process.env.EXPO_PUBLIC_SUPABASE_BUCKET || "",
+    captionsBucket: process.env.EXPO_PUBLIC_SUPABASE_CAPTIONS_BUCKET || "",
+    bucket: process.env.EXPO_PUBLIC_SUPABASE_BUCKET || "",
   };
-  return { ...extra, firebase };
+  return { ...extra, supabase };
 };
 
 const EAS_PROJECT_ID = process.env.EXPO_PUBLIC_EAS_PROJECT_ID || "41dd4109-384d-4c95-9b6a-f27875bcb306";
@@ -54,7 +53,7 @@ module.exports = ({ config }) => ({
     runtimeVersion: {
       policy: "appVersion",
     },
-    extra: withFirebaseConfig({
+    extra: withSupabaseConfig({
       ...(config?.extra || {}),
       eas: { projectId: EAS_PROJECT_ID },
     }),

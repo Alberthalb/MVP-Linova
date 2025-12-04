@@ -7,23 +7,9 @@ import { useThemeColors } from "../../hooks/useThemeColors";
 import { spacing, typography, radius } from "../../styles/theme";
 import CustomButton from "../../components/CustomButton";
 import { createOrUpdateUserProfile, saveModuleUnlock } from "../../services/userService";
-import { collection, collectionGroup, onSnapshot } from "firebase/firestore";
-import { db } from "../../services/firebase";
+import { supabase } from "../../services/supabase";
 
 const FILTER_TAGS = ["Todos", "Iniciante", "Intermediario", "Avancado"];
-const FALLBACK_MODULES = [
-  { id: "module-a1", title: "Modulo A1", levelTag: "A1", description: "Primeiros passos e vocabulario essencial.", order: 0 },
-  { id: "module-a2", title: "Modulo A2", levelTag: "A2", description: "Rotinas e expressoes frequentes.", order: 1 },
-  { id: "module-a2-plus", title: "Modulo A2+", levelTag: "A2+", description: "Mensagens curtas e leitura guiada.", order: 2 },
-  { id: "module-b1", title: "Modulo B1", levelTag: "B1", description: "Conversas basicas e compreensao geral.", order: 3 },
-  { id: "module-b1-plus", title: "Modulo B1+", levelTag: "B1+", description: "Comunicacao mais segura em situacoes variadas.", order: 4 },
-  { id: "module-b2", title: "Modulo B2", levelTag: "B2", description: "Textos claros e discussoes com confianca.", order: 5 },
-  { id: "module-b2-plus", title: "Modulo B2+", levelTag: "B2+", description: "Argumentacao e nuances em temas complexos.", order: 6 },
-  { id: "module-c1", title: "Modulo C1", levelTag: "C1", description: "Linguagem flexivel em contextos profissionais.", order: 7 },
-  { id: "module-c1-plus", title: "Modulo C1+", levelTag: "C1+", description: "Precisao alta em temas tecnicos e abstratos.", order: 8 },
-  { id: "module-c2", title: "Modulo C2", levelTag: "C2", description: "Dominio avancado e naturalidade plena.", order: 9 },
-];
-
 const LEVEL_SEQUENCE = ["A1", "A2", "A2+", "B1", "B1+", "B2", "B2+", "C1", "C1+", "C2"];
 const levelOrder = (tag) => {
   const idx = LEVEL_SEQUENCE.indexOf(tag);
@@ -45,21 +31,34 @@ const levelBucket = (tag) => {
 };
 
 const ModuleListScreen = ({ navigation }) => {
-  const { modules, moduleUnlocks, selectedModuleId, setSelectedModuleId, currentUser, lessonsCompleted = {} } = useContext(AppContext);
+  const { modules, moduleUnlocks, selectedModuleId, setSelectedModuleId, currentUser, lessonsCompleted = {} } =
+    useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [filter, setFilter] = useState("Todos");
   const [pendingModule, setPendingModule] = useState(null);
   const [lessons, setLessons] = useState([]);
   const isFirstLogin = useMemo(() => {
-    const creation = currentUser?.metadata?.creationTime;
-    const lastSignIn = currentUser?.metadata?.lastSignInTime;
+    const creation = currentUser?.created_at;
+    const lastSignIn = currentUser?.last_sign_in_at || currentUser?.created_at;
     return creation && lastSignIn && creation === lastSignIn;
-  }, [currentUser?.metadata?.creationTime, currentUser?.metadata?.lastSignInTime]);
+  }, [currentUser?.created_at, currentUser?.last_sign_in_at]);
+
+  useEffect(() => {
+    const lessonsRefetch = async () => {
+      const { data, error } = await supabase.from("lessons").select("id,module_id");
+      if (error) {
+        console.warn("[Lessons] Falha ao carregar lista para progresso:", error);
+        setLessons([]);
+        return;
+      }
+      setLessons(data || []);
+    };
+    lessonsRefetch();
+  }, []);
 
   const availableModules = useMemo(() => {
-    const source = modules?.length ? modules : FALLBACK_MODULES;
-    return source
+    return (modules || [])
       .slice()
       .sort((a, b) => {
         const orderA = Number.isFinite(a?.order) ? a.order : levelOrder(a?.levelTag);
@@ -70,30 +69,10 @@ const ModuleListScreen = ({ navigation }) => {
 
   const firstModuleId = availableModules[0]?.id || null;
 
-  useEffect(() => {
-    const lessonsRef = collectionGroup(db, "lessons");
-    const unsubscribe = onSnapshot(
-      lessonsRef,
-      (snapshot) => {
-        const list = snapshot.docs.map((docSnap, index) => {
-          const data = docSnap.data();
-          return {
-            id: docSnap.id,
-            title: data?.title || `Aula ${index + 1}`,
-            moduleId: data?.moduleId || data?.module || null,
-          };
-        });
-        setLessons(list);
-      },
-      () => setLessons([])
-    );
-    return unsubscribe;
-  }, []);
-
   const moduleProgress = useMemo(() => {
     const summary = {};
     lessons.forEach((lesson) => {
-      const moduleId = lesson.moduleId || firstModuleId || "unassigned";
+      const moduleId = lesson.module_id || firstModuleId || "unassigned";
       if (!summary[moduleId]) {
         summary[moduleId] = { total: 0, earned: 0 };
       }
@@ -112,14 +91,14 @@ const ModuleListScreen = ({ navigation }) => {
   }, [lessons, lessonsCompleted, firstModuleId]);
 
   useEffect(() => {
-    if (!currentUser?.uid) return;
+    if (!currentUser?.id) return;
     Object.entries(moduleProgress).forEach(([moduleId, progress]) => {
       const entry = moduleUnlocks?.[moduleId];
       if (progress?.required > 0 && progress?.earned >= progress.required && !entry) {
-        saveModuleUnlock(currentUser.uid, moduleId, { passed: true, status: "unlocked", reason: "xp" });
+        saveModuleUnlock(currentUser.id, moduleId, { passed: true, status: "unlocked", reason: "xp" });
       }
     });
-  }, [moduleProgress, moduleUnlocks, currentUser?.uid]);
+  }, [moduleProgress, moduleUnlocks, currentUser?.id]);
 
   const isUnlocked = (moduleId, index) => {
     if (!moduleId) return false;
@@ -147,8 +126,8 @@ const ModuleListScreen = ({ navigation }) => {
       return;
     }
     setSelectedModuleId(module.id);
-    if (currentUser?.uid) {
-      await createOrUpdateUserProfile(currentUser.uid, { currentModuleId: module.id });
+    if (currentUser?.id) {
+      await createOrUpdateUserProfile(currentUser.id, { currentModuleId: module.id, current_module_id: module.id });
     }
     navigation.navigate("LessonList", { moduleId: module.id });
   };
@@ -249,9 +228,6 @@ const ModuleListScreen = ({ navigation }) => {
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>Nenhum modulo para este filtro.</Text>
-              <TouchableOpacity onPress={() => handleFilterChange("Todos")} activeOpacity={0.8}>
-                <Text style={styles.emptyLink}>Ver todos os modulos</Text>
-              </TouchableOpacity>
             </View>
           }
         />
@@ -508,12 +484,6 @@ const createStyles = (colors) =>
     emptyText: {
       color: colors.muted,
       fontFamily: typography.fonts.body,
-    },
-    emptyLink: {
-      color: colors.accent,
-      fontFamily: typography.fonts.body,
-      fontWeight: "700",
-      textDecorationLine: "underline",
     },
     buttonSpacing: {
       marginTop: spacing.md,

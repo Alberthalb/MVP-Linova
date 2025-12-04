@@ -5,7 +5,6 @@ import CustomButton from "../../components/CustomButton";
 import { spacing, typography } from "../../styles/theme";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { sendPasswordRecovery } from "../../services/authService";
-import { getFirebaseAuthErrorMessage } from "../../utils/firebaseErrorMessage";
 
 const ForgotPasswordScreen = ({ navigation }) => {
   const [email, setEmail] = useState("");
@@ -25,18 +24,14 @@ const ForgotPasswordScreen = ({ navigation }) => {
       Alert.alert("Verifique seu email", "Enviamos instruções para redefinir sua senha.");
       navigation.goBack();
     } catch (error) {
-      if (error?.code === "auth/user-not-found") {
-        Alert.alert("Conta não encontrada", "Não encontramos nenhum cadastro usando esse email.");
-      } else {
-        Alert.alert("Erro ao enviar link", getFirebaseAuthErrorMessage(error));
-      }
+      Alert.alert("Erro ao enviar link", error?.message || "Não foi possível enviar o link de recuperação.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top','left','right','bottom']}>
+    <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
       <ScrollView
         contentContainerStyle={styles.container}
         overScrollMode="always"

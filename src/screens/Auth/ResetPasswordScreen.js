@@ -5,7 +5,6 @@ import CustomButton from "../../components/CustomButton";
 import { spacing, typography, radius } from "../../styles/theme";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { applyPasswordReset, verifyResetCode } from "../../services/authService";
-import { getFirebaseAuthErrorMessage } from "../../utils/firebaseErrorMessage";
 import * as Linking from "expo-linking";
 
 const ResetPasswordScreen = ({ navigation, route }) => {
@@ -20,14 +19,14 @@ const ResetPasswordScreen = ({ navigation, route }) => {
   const extractCode = (text) => {
     const trimmed = text.trim();
     if (!trimmed) return "";
-    if (/^https?:\/\//i.test(trimmed) || trimmed.includes("oobCode")) {
+    if (/^https?:\/\//i.test(trimmed) || trimmed.includes("code") || trimmed.includes("access_token")) {
       try {
         const parsed = Linking.parse(trimmed);
-        const fromQuery = parsed?.queryParams?.oobCode || parsed?.queryParams?.oobcode;
-        if (fromQuery) return fromQuery;
+        const queryCode = parsed?.queryParams?.code || parsed?.queryParams?.access_token;
+        if (queryCode) return queryCode;
         if (parsed?.fragment) {
           const params = new URLSearchParams(parsed.fragment.replace("#", ""));
-          return params.get("oobCode") || params.get("oobcode") || trimmed;
+          return params.get("code") || params.get("access_token") || trimmed;
         }
       } catch (error) {
         return trimmed;
@@ -77,14 +76,14 @@ const ResetPasswordScreen = ({ navigation, route }) => {
     try {
       const emailForCode = await verifyResetCode(trimmedCode);
       await applyPasswordReset(trimmedCode, newPassword);
-      Alert.alert("Senha atualizada", `Senha redefinida para ${emailForCode}. Faça login novamente.`, [
+      Alert.alert("Senha atualizada", `Senha redefinida para ${emailForCode || email}. Faça login novamente.`, [
         {
           text: "OK",
           onPress: () => navigation.reset({ index: 0, routes: [{ name: "Login" }] }),
         },
       ]);
     } catch (error) {
-      Alert.alert("Não foi possível redefinir", getFirebaseAuthErrorMessage(error));
+      Alert.alert("Não foi possível redefinir", error?.message || "Tente novamente com o link mais recente.");
     } finally {
       setLoading(false);
     }

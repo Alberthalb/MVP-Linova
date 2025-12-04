@@ -2,41 +2,19 @@ import React, { useContext, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
-import { db } from "../../services/firebase";
+import { supabase } from "../../services/supabase";
 import CustomButton from "../../components/CustomButton";
 import { spacing, typography, radius } from "../../styles/theme";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { AppContext } from "../../context/AppContext";
 import { saveModuleUnlock, createOrUpdateUserProfile } from "../../services/userService";
 
-const FALLBACK_QUESTIONS = [
-  {
-    id: "q1",
-    question: "Você consegue acompanhar diálogos simples sem legenda?",
-    options: ["Ainda não", "Consigo em partes", "Sim, com tranquilidade"],
-    correct: 2,
-  },
-  {
-    id: "q2",
-    question: "Como é sua leitura de textos curtos em inglês?",
-    options: ["Preciso traduzir tudo", "Leio com ajuda", "Leitura fluida"],
-    correct: 1,
-  },
-  {
-    id: "q3",
-    question: "Consegue se apresentar e falar sobre rotina?",
-    options: ["Com dificuldade", "Com pausas", "Sim, com confiança"],
-    correct: 1,
-  },
-];
-
 const PASSING_SCORE = 70;
 
 const ModuleAssessmentScreen = ({ navigation, route }) => {
   const moduleId = route?.params?.moduleId;
   const moduleTitle = route?.params?.moduleTitle || "Módulo";
-  const { currentUser, setSelectedModuleId } = useContext(AppContext);
+  const { currentUser, setSelectedModuleId, setModuleUnlocks } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [questions, setQuestions] = useState([]);
@@ -51,30 +29,33 @@ const ModuleAssessmentScreen = ({ navigation, route }) => {
   useEffect(() => {
     const loadQuestions = async () => {
       if (!moduleId) {
-        setQuestions(FALLBACK_QUESTIONS);
+        setQuestions([]);
         setLoading(false);
         return;
       }
       try {
-        const qRef = query(collection(db, "modules", moduleId, "assessmentQuestions"), orderBy("order", "asc"));
-        const snapshot = await getDocs(qRef);
-        if (snapshot.empty) {
-          setQuestions(FALLBACK_QUESTIONS);
-        } else {
-          const normalized = snapshot.docs.map((docSnap, index) => {
-            const data = docSnap.data();
-            const opts = Array.isArray(data?.options) ? data.options : [];
-            return {
-              id: docSnap.id,
-              question: data?.question || `Pergunta ${index + 1}`,
-              options: opts,
-              correct: Number.isFinite(data?.correct) ? data.correct : Number(data?.correct) || 0,
-            };
-          });
-          setQuestions(normalized);
+        const { data, error } = await supabase
+          .from("module_assessment_questions")
+          .select("*")
+          .eq("module_id", moduleId)
+          .order("order", { ascending: true });
+        if (error) throw error;
+        if (!data || !data.length) {
+          throw new Error("Sem perguntas");
         }
+        const normalized = data.map((doc, index) => {
+          const opts = Array.isArray(doc?.options) ? doc.options : [];
+          return {
+            id: doc.id || `q${index + 1}`,
+            question: doc.question || `Pergunta ${index + 1}`,
+            options: opts,
+            correct: Number.isFinite(doc.correct) ? doc.correct : Number(doc?.correct) || 0,
+          };
+        });
+        setQuestions(normalized);
       } catch (error) {
-        setQuestions(FALLBACK_QUESTIONS);
+        Alert.alert("Prova indisponível", "Nenhuma pergunta encontrada para este módulo.");
+        setQuestions([]);
       } finally {
         setLoading(false);
       }
@@ -116,15 +97,18 @@ const ModuleAssessmentScreen = ({ navigation, route }) => {
       return;
     }
     try {
-      if (currentUser?.uid && moduleId) {
-        await saveModuleUnlock(currentUser.uid, moduleId, {
+      if (currentUser?.id && moduleId) {
+        await saveModuleUnlock(currentUser.id, moduleId, {
           passed: true,
           score,
           correctCount,
           totalQuestions: total,
-          moduleTitle,
         });
-        await createOrUpdateUserProfile(currentUser.uid, { currentModuleId: moduleId });
+        await createOrUpdateUserProfile(currentUser.id, { currentModuleId: moduleId, current_module_id: moduleId });
+        setModuleUnlocks((prev) => ({
+          ...(prev || {}),
+          [moduleId]: { passed: true, status: "unlocked", score, correctCount, totalQuestions: total, moduleTitle },
+        }));
       }
       setSelectedModuleId(moduleId);
       Alert.alert("Módulo liberado", "Prova concluída com sucesso. O módulo foi desbloqueado.", [

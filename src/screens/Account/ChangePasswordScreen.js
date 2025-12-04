@@ -5,7 +5,6 @@ import CustomButton from "../../components/CustomButton";
 import { spacing, typography, radius } from "../../styles/theme";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { changePassword } from "../../services/authService";
-import { getFirebaseAuthErrorMessage } from "../../utils/firebaseErrorMessage";
 
 const ChangePasswordScreen = ({ navigation }) => {
   const theme = useThemeColors();
@@ -38,7 +37,7 @@ const ChangePasswordScreen = ({ navigation }) => {
       setNewPassword("");
       setConfirmPassword("");
     } catch (error) {
-      Alert.alert("Não foi possível alterar", getFirebaseAuthErrorMessage(error));
+      Alert.alert("Não foi possível alterar", error?.message || "Tente novamente.");
     } finally {
       setLoading(false);
     }

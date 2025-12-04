@@ -7,8 +7,7 @@ import { AppContext } from "../../context/AppContext";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { canAccessLevel } from "../../utils/levels";
 import CustomButton from "../../components/CustomButton";
-import { collection, collectionGroup, onSnapshot, orderBy, query } from "firebase/firestore";
-import { db } from "../../services/firebase";
+import { supabase } from "../../services/supabase";
 
 const LessonListScreen = ({ navigation, route }) => {
   const {
@@ -48,46 +47,38 @@ const LessonListScreen = ({ navigation, route }) => {
     [firstModuleId, moduleUnlocks, modulesEnabled]
   );
 
-  useEffect(() => {
-    setLoading(true);
-    const baseQuery =
-      modulesEnabled && activeModuleId
-        ? query(collection(db, "modules", activeModuleId, "lessons"), orderBy("order", "asc"))
-        : query(collectionGroup(db, "lessons"), orderBy("order", "asc"));
-
-    const unsubscribe = onSnapshot(
-      baseQuery,
-      (snapshot) => {
-        const list = snapshot.docs.map((docSnap, index) => {
-          const data = docSnap.data();
-          const moduleIdFromPath = docSnap.ref?.parent?.parent?.id || null;
-          return {
-            id: docSnap.id,
-            title: data?.title || `Aula ${index + 1}`,
-            level: data?.level || data?.levelTag || data?.moduleLevel || "A1",
-            order: Number.isFinite(data?.order) ? data.order : index,
-            moduleId: data?.moduleId || data?.module || data?.moduleRef || moduleIdFromPath || activeModuleId || null,
-            duration: data?.duration || data?.durationText || null,
-            durationMs: data?.durationMs || data?.durationMillis || null,
-            videoPath: data?.videoPath || data?.videoStoragePath || null,
-            videoUrl: data?.videoUrl || data?.video || null,
-            captionPath: data?.captionPath || data?.subtitlePath || null,
-            captionUrl: data?.captionUrl || data?.subtitleUrl || null,
-            transcript: data?.transcript || "",
-          };
-        });
-        const sorted = list.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-        setLessons(sorted);
-        setLoading(false);
-      },
-      () => {
+  const fetchLessons = useCallback(
+    async (moduleId) => {
+      setLoading(true);
+      const baseQuery = supabase.from("lessons").select("*");
+      const queryBuilder = moduleId ? baseQuery.eq("module_id", moduleId) : baseQuery;
+      const { data, error } = await queryBuilder.order("order", { ascending: true });
+      if (error) {
+        console.warn("[Lessons] Falha ao carregar:", error);
         setLessons([]);
         setLoading(false);
+        return;
       }
-    );
-
-    return () => unsubscribe();
-  }, [modulesEnabled, activeModuleId]);
+      const list = (data || []).map((row, index) => ({
+        id: row.id,
+        title: row.title || `Aula ${index + 1}`,
+        level: row.level || row.level_tag || row.module_level || "A1",
+        order: Number.isFinite(row.order) ? row.order : index,
+        moduleId: row.module_id || moduleId || null,
+        duration: row.duration || row.duration_text || null,
+        durationMs: row.duration_ms || row.durationMs || row.durationMillis || null,
+        videoPath: row.video_path || row.video_storage_path || row.videoPath || null,
+        videoUrl: row.video_url || row.videoUrl || null,
+        captionPath: row.caption_path || row.subtitle_path || row.captionPath || null,
+        captionUrl: row.caption_url || row.subtitle_url || row.captionUrl || null,
+        transcript: row.transcript || "",
+      }));
+      const sorted = list.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      setLessons(sorted);
+      setLoading(false);
+    },
+    []
+  );
 
   useEffect(() => {
     const moduleFromRoute = route?.params?.moduleId;
@@ -95,7 +86,7 @@ const LessonListScreen = ({ navigation, route }) => {
       setActiveModuleId(moduleFromRoute);
       setSelectedModuleId(moduleFromRoute);
     }
-  }, [route?.params?.moduleId]);
+  }, [route?.params?.moduleId, activeModuleId, setSelectedModuleId]);
 
   useEffect(() => {
     if (!activeModuleId && selectedModuleId) {
@@ -111,6 +102,11 @@ const LessonListScreen = ({ navigation, route }) => {
       setSelectedModuleId(fallback.id);
     }
   }, [modules, activeModuleId, setSelectedModuleId]);
+
+  useEffect(() => {
+    const targetModule = modulesEnabled ? activeModuleId || firstModuleId : null;
+    fetchLessons(targetModule);
+  }, [modulesEnabled, activeModuleId, firstModuleId, fetchLessons]);
 
   useEffect(() => {
     if (!modulesEnabled || !activeModuleId) return;

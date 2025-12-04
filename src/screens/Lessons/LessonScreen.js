@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   View,
@@ -22,9 +22,7 @@ import { spacing, typography, radius } from "../../styles/theme";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { AppContext } from "../../context/AppContext";
 import { canAccessLevel } from "../../utils/levels";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db, storage } from "../../services/firebase";
-import { getDownloadURL, ref } from "firebase/storage";
+import { supabase, supabaseVideoBucket, supabaseCaptionsBucket } from "../../services/supabase";
 import { saveLessonProgress } from "../../services/userService";
 
 const timeToMs = (timeString = "") => {
@@ -164,7 +162,6 @@ const LessonScreen = ({ route, navigation }) => {
     if (Platform.OS !== "android") return;
     try {
       await NavigationBar.setVisibilityAsync("hidden");
-      await NavigationBar.setBehaviorAsync("immersiveSticky");
     } catch (error) {
       // ignore
     }
@@ -173,7 +170,6 @@ const LessonScreen = ({ route, navigation }) => {
     if (Platform.OS !== "android") return;
     try {
       await NavigationBar.setVisibilityAsync("visible");
-      await NavigationBar.setBehaviorAsync("inset-swipe");
     } catch (error) {
       // ignore
     }
@@ -234,26 +230,37 @@ const LessonScreen = ({ route, navigation }) => {
   }, [isFullscreen, navigation]);
 
   useEffect(() => {
-    if (!lessonId) return undefined;
-    let unsubscribe = () => {};
-    const handleDoc = (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data() || {};
-        setLesson({ id: snapshot.id, moduleId: data?.moduleId || data?.module || routeModuleId || null, ...data });
+    let active = true;
+    const loadLesson = async () => {
+      if (!lessonId) {
+        setLoading(false);
+        return;
       }
+      const { data, error } = await supabase.from("lessons").select("*").eq("id", lessonId).maybeSingle();
+      if (!active) return;
+      if (error || !data) {
+        Alert.alert("Aula indisponivel", "Volte e selecione o modulo novamente para carregar a aula.", [
+          { text: "Ok", onPress: () => navigation.goBack() },
+        ]);
+        setLoading(false);
+        return;
+      }
+      setLesson({
+        id: data.id,
+        moduleId: data.module_id || data.module || routeModuleId || null,
+        videoUrl: data.video_url || data.videoUrl || null,
+        videoPath: data.video_path || data.videoPath || data.video_storage_path || null,
+        captionUrl: data.caption_url || data.captionUrl || null,
+        captionPath: data.caption_path || data.captionPath || data.subtitle_path || null,
+        transcript: data.transcript || data.transcricao || data.texto || data.subtitle || data.caption || null,
+        ...data,
+      });
       setLoading(false);
     };
-
-    if (routeModuleId) {
-      const docRef = doc(db, "modules", routeModuleId, "lessons", lessonId);
-      unsubscribe = onSnapshot(docRef, handleDoc, () => setLoading(false));
-    } else {
-      Alert.alert("Aula indisponivel", "Volte e selecione o modulo novamente para carregar a aula.", [
-        { text: "Ok", onPress: () => navigation.goBack() },
-      ]);
-      setLoading(false);
-    }
-    return unsubscribe;
+    loadLesson();
+    return () => {
+      active = false;
+    };
   }, [lessonId, routeModuleId, navigation]);
 
   useEffect(() => {
@@ -299,11 +306,25 @@ const LessonScreen = ({ route, navigation }) => {
     return unique;
   };
 
-  const resolveMediaUrl = async (targetPath) => {
+  const mediaBucket = supabaseVideoBucket || "video";
+  const captionsBucket = supabaseCaptionsBucket || mediaBucket;
+
+const resolveMediaUrl = async (targetPath, bucket = mediaBucket) => {
     if (!targetPath) return null;
     if (isHttpPath(targetPath)) return targetPath;
-    const videoRefStorage = ref(storage, targetPath);
-    return getDownloadURL(videoRefStorage);
+    try {
+      const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(targetPath);
+      if (publicData?.publicUrl) return publicData.publicUrl;
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(targetPath, 3600);
+      if (error) {
+        console.warn("[Lesson] Falha ao gerar URL assinada no Supabase:", error.message);
+        return null;
+      }
+      return data?.signedUrl || null;
+    } catch (error) {
+      console.warn("[Lesson] Caminho de mídia não resolvido:", error?.message || error);
+      return null;
+    }
   };
 
   useEffect(() => {
@@ -322,7 +343,7 @@ const LessonScreen = ({ route, navigation }) => {
           if (videoUrlCache[cacheKey]) {
             setVideoUrl(videoUrlCache[cacheKey]);
           } else {
-            const url = await resolveMediaUrl(target.path);
+            const url = await resolveMediaUrl(target.path, mediaBucket);
             if (url) {
               setVideoUrlCache((prev) => ({ ...prev, [cacheKey]: url }));
               setVideoUrl(url);
@@ -339,12 +360,18 @@ const LessonScreen = ({ route, navigation }) => {
         }
         const captionPath = lesson.captionUrl || lesson.captionPath || lesson.subtitleUrl || lesson.subtitlePath;
         if (captionPath) {
-          const resolvedCaptionUrl = isHttpPath(captionPath) ? captionPath : await getDownloadURL(ref(storage, captionPath));
-          const response = await fetch(resolvedCaptionUrl);
+          const captionUrl = isHttpPath(captionPath) ? captionPath : await resolveMediaUrl(captionPath, captionsBucket);
+          if (!captionUrl) {
+            console.warn("[Lesson] Legenda ignorada: caminho invÃ¡lido ou nÃ£o resolvido");
+            setSubtitleSegments([]);
+            setCaptionUrl(null);
+            return;
+          }
+          const response = await fetch(captionUrl);
           const text = await response.text();
           const segments = parseSubtitleFile(text);
           setSubtitleSegments(segments);
-          setCaptionUrl(resolvedCaptionUrl);
+          setCaptionUrl(captionUrl);
         } else {
           setSubtitleSegments([]);
           setCaptionUrl(null);
@@ -372,7 +399,7 @@ const LessonScreen = ({ route, navigation }) => {
       return;
     }
     try {
-      const url = await resolveMediaUrl(next.path);
+      const url = await resolveMediaUrl(next.path, mediaBucket);
       if (url) {
         setVideoUrlCache((prev) => ({ ...prev, [next.path]: url }));
         setVideoUrl(url);
@@ -493,26 +520,38 @@ const LessonScreen = ({ route, navigation }) => {
         setControlsVisible(true);
       }
     }
-    if (!status.isLoaded || !subtitleSegments.length) return;
+    if (!status.isLoaded) return;
+    if (!isSeeking) {
+      setPositionMs(status.positionMillis || 0);
+    }
+    if (status.isPlaying) {
+      setControlsVisible((prev) => prev);
+    } else {
+      setControlsVisible(true);
+    }
+    // Marca como visto se concluir ou passar de 80%
+    const thresholdPassed =
+      status.durationMillis && status.positionMillis && status.positionMillis >= status.durationMillis * 0.8;
+    if ((status.didJustFinish || thresholdPassed) && lessonId && !watchSaved && currentUser?.id) {
+      setWatchSaved(true);
+      try {
+        await saveLessonProgress(currentUser.id, lessonId, {
+          lessonTitle: lesson?.title,
+          watched: true,
+          completed: false,
+          xp: 0,
+        });
+      } catch (error) {
+        setWatchSaved(false);
+        console.warn("[Lesson] Falha ao salvar visualizacao:", error);
+      }
+    }
+    if (!subtitleSegments.length) return;
     const { positionMillis } = status;
     const active = subtitleSegments.find((segment) => positionMillis >= segment.start && positionMillis <= segment.end);
     const text = active ? active.text : "";
     if (text !== currentSubtitle) {
       setCurrentSubtitle(text);
-    }
-    if (status.didJustFinish && lessonId && !watchSaved) {
-      setWatchSaved(true);
-      try {
-        if (currentUser?.uid) {
-          await saveLessonProgress(currentUser.uid, lessonId, {
-            lessonTitle: lesson?.title,
-            watched: true,
-          });
-        }
-      } catch (error) {
-        setWatchSaved(false);
-        console.warn("[Lesson] Falha ao salvar visualizacao:", error);
-      }
     }
   };
 
@@ -539,23 +578,39 @@ const LessonScreen = ({ route, navigation }) => {
   }, [showControls, scheduleHideControls]);
 
   const progressEntry = lessonsCompleted[lessonId] || {};
-  const hasWatched = !!(progressEntry.watched || progressEntry.completed || progressEntry.score !== undefined);
+  const hasWatched = watchSaved || !!(progressEntry.watched || progressEntry.completed || progressEntry.score !== undefined);
   const isLessonAccessible = canAccessLevel(userLevel, lesson?.level);
 
   useEffect(() => {
+    setWatchSaved(false);
+  }, [lessonId]);
+
+  useEffect(() => {
     if (!lesson || !userLevel || !lesson.level || isLessonAccessible) return;
-    Alert.alert(
-      "Conteudo bloqueado",
-      `Esta aula pertence ao nivel ${lesson.level}. Complete seu nivel atual (${userLevel}) para desbloquear.`,
-      [{ text: "Ok", onPress: () => navigation.goBack() }]
-    );
+    const targetLevel = lesson.level ? String(lesson.level) : "superior";
+    const currentLevelLabel = userLevel ? String(userLevel) : "atual";
+    const lockedMessage =
+      "Esta aula pertence ao nivel " +
+      targetLevel +
+      ". Complete seu nivel atual (" +
+      currentLevelLabel +
+      ") para desbloquear.";
+    Alert.alert("Conteudo bloqueado", lockedMessage, [{ text: "Ok", onPress: () => navigation.goBack() }]);
   }, [isLessonAccessible, lesson, navigation, userLevel]);
 
   const handleQuizPress = () => {
     if (!isLessonAccessible) {
+      const targetLevel = lesson?.level ? String(lesson.level) : "superior";
+      const currentLevelLabel = userLevel ? String(userLevel) : "atual";
+      const lockedMessage =
+        "Esta aula pertence ao nivel " +
+        targetLevel +
+        ". Complete seu nivel atual (" +
+        currentLevelLabel +
+        ") para desbloquear.";
       Alert.alert(
         "Conteudo bloqueado",
-        `Esta aula pertence ao nivel ${lesson?.level || "superior"}. Complete seu nivel atual (${userLevel}) para desbloquear.`
+        lockedMessage
       );
       return;
     }
@@ -579,9 +634,9 @@ const LessonScreen = ({ route, navigation }) => {
       ? (() => {
           const minutes = Math.floor(duration / 60000);
           const seconds = Math.floor((duration % 60000) / 1000);
-          return seconds > 0 ? `${minutes}m${seconds}s` : `${minutes}m`;
+          return seconds > 0 ? minutes + "m" + seconds + "s" : minutes + "m";
         })()
-      : `${Math.floor(duration / 1000)} s`
+      : Math.floor(duration / 1000) + " s"
     : lesson?.duration || "10 min";
 
   const formatTime = (ms) => {
@@ -590,7 +645,7 @@ const LessonScreen = ({ route, navigation }) => {
       .toString()
       .padStart(2, "0");
     const s = (totalSeconds % 60).toString().padStart(2, "0");
-    return `${m}:${s}`;
+    return m + ":" + s;
   };
 
   const renderPlayer = () => {
@@ -719,18 +774,8 @@ const LessonScreen = ({ route, navigation }) => {
             hitSlop={{ top: spacing.sm, bottom: spacing.sm, left: spacing.sm, right: spacing.sm }}
           >
             <View style={styles.timelineTrack}>
-              <View
-                style={[
-                  styles.timelineProgress,
-                  { width: `${progressPct}%` },
-                ]}
-              />
-              <View
-                style={[
-                  styles.timelineThumb,
-                  { left: `${progressPct}%` },
-                ]}
-              />
+              <View style={[styles.timelineProgress, { width: progressPct + "%" }]} />
+              <View style={[styles.timelineThumb, { left: progressPct + "%" }]} />
             </View>
           </View>
           <TouchableOpacity
@@ -1109,3 +1154,11 @@ const createStyles = (colors) =>
   });
 
 export default LessonScreen;
+
+
+
+
+
+
+
+

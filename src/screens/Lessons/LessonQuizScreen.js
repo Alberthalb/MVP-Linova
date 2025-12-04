@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
+﻿import React, { useContext, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -7,10 +7,9 @@ import CustomButton from "../../components/CustomButton";
 import { spacing, typography, radius } from "../../styles/theme";
 import { Feather } from "@expo/vector-icons";
 import { useThemeColors } from "../../hooks/useThemeColors";
-import { collection, doc, getDocs, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "../../services/firebase";
+import { supabase } from "../../services/supabase";
 import { AppContext } from "../../context/AppContext";
-import { createOrUpdateUserProfile, saveLessonProgress } from "../../services/userService";
+import { createOrUpdateUserProfile, saveLessonProgress, saveLessonQuizResult } from "../../services/userService";
 import { LEVEL_SEQUENCE, getNextLevel, canAccessLevel } from "../../utils/levels";
 
 const STORAGE_KEY = "@linova:lessonProgress";
@@ -165,29 +164,35 @@ const LessonQuizScreen = ({ navigation, route }) => {
   const progress = total > 0 ? (step + 1) / total : 0;
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const storageKey = useMemo(() => getProgressKey(currentUser?.uid), [currentUser?.uid]);
+  const storageKey = useMemo(() => getProgressKey(currentUser?.id), [currentUser?.id]);
 
   const selectOption = (optionIndex) => {
     setAnswers((prev) => ({ ...prev, [currentQuestion.id]: optionIndex }));
   };
 
   const promoteIfEligible = async () => {
-    if (!currentUser?.uid || !level) return null;
+    if (!currentUser?.id || !level) return null;
     const nextLevel = getNextLevel(level);
     if (!nextLevel) return null;
     try {
-      const lessonsSnapshot = await getDocs(query(collection(db, "lessons"), where("level", "==", level)));
-      const lessonIds = lessonsSnapshot.docs.map((docSnap) => docSnap.id);
+      const { data: lessonsData, error: lessonsError } = await supabase.from("lessons").select("id,level").eq("level", level);
+      if (lessonsError) throw lessonsError;
+      const lessonIds = (lessonsData || []).map((row) => row.id);
       if (!lessonIds.length) return null;
-      const progressSnapshot = await getDocs(collection(db, "users", currentUser.uid, "lessonsCompleted"));
-      const progressMap = new Map(progressSnapshot.docs.map((docSnap) => [docSnap.id, docSnap.data()]));
+      const { data: progressData, error: progressError } = await supabase
+        .from("user_lessons_completed")
+        .select("lesson_id,score")
+        .eq("user_id", currentUser.id)
+        .in("lesson_id", lessonIds);
+      if (progressError) throw progressError;
+      const progressMap = new Map(progressData.map((row) => [row.lesson_id, row]));
       const completedAll = lessonIds.every((id) => {
         const entry = progressMap.get(id);
         const score = typeof entry?.score === "number" ? entry.score : Number(entry?.score) || 0;
         return score >= 70;
       });
       if (!completedAll) return null;
-      await createOrUpdateUserProfile(currentUser.uid, { level: nextLevel });
+      await createOrUpdateUserProfile(currentUser.id, { level: nextLevel });
       setLevel(nextLevel);
       return nextLevel;
     } catch (error) {
@@ -201,24 +206,32 @@ const LessonQuizScreen = ({ navigation, route }) => {
       setLoading(false);
       return;
     }
-    const docRef = doc(db, "lessons", lessonId);
-    const unsubscribe = onSnapshot(
-      docRef,
-      (snapshot) => {
-        const data = snapshot.data();
-        if (data?.level && data.level !== lessonLevel) {
-          setLessonLevel(data.level);
+    const fetchQuiz = async () => {
+      try {
+        const { data: lessonData, error: lessonError } = await supabase.from("lessons").select("*").eq("id", lessonId).maybeSingle();
+        if (lessonError) throw lessonError;
+        if (lessonData?.level && lessonData.level !== lessonLevel) {
+          setLessonLevel(lessonData.level);
         }
-        const quizData = normalizeQuiz(data?.quiz || []);
-        setQuestions(quizData);
+        const { data: quizData, error: quizError } = await supabase
+          .from("lesson_quizzes")
+          .select("*")
+          .eq("lesson_id", lessonId)
+          .order("order", { ascending: true });
+        if (quizError) throw quizError;
+        const normalized = quizData && quizData.length ? normalizeQuiz(quizData) : normalizeQuiz(lessonData?.quiz || []);
+        setQuestions(normalized);
         setStep(0);
         setAnswers({});
+      } catch (error) {
+        console.warn("[LessonQuiz] Falha ao carregar quiz:", error);
+        setQuestions([]);
+      } finally {
         setLoading(false);
-      },
-      () => setLoading(false)
-    );
-    return unsubscribe;
-  }, [lessonId]);
+      }
+    };
+    fetchQuiz();
+  }, [lessonId, lessonLevel]);
 
   useEffect(() => {
     if (accessDenied) return;
@@ -227,18 +240,18 @@ const LessonQuizScreen = ({ navigation, route }) => {
     setAccessDenied(true);
     Alert.alert(
       "Quiz bloqueado",
-      `Este quiz pertence ao nível ${lessonLevel}. Complete seu nível atual (${level}) para desbloquear.`,
+      `Este quiz pertence ao nÃ­vel ${lessonLevel}. Complete seu nÃ­vel atual (${level}) para desbloquear.`,
       [{ text: "Ok", onPress: () => navigation.goBack() }]
     );
   }, [accessDenied, lessonLevel, level, navigation]);
 
   const goNext = async () => {
     if (!currentQuestion) {
-      Alert.alert("Quiz indisponível", "Esta aula ainda não possui perguntas.");
+      Alert.alert("Quiz indisponÃ­vel", "Esta aula ainda nÃ£o possui perguntas.");
       return;
     }
     if (answers[currentQuestion.id] === undefined) {
-      Alert.alert("Responda à pergunta", "Selecione uma alternativa antes de avançar.");
+      Alert.alert("Responda Ã  pergunta", "Selecione uma alternativa antes de avanÃ§ar.");
       return;
     }
     if (step < total - 1) {
@@ -252,6 +265,8 @@ const LessonQuizScreen = ({ navigation, route }) => {
     const correctAnswers = questions.filter((q) => answers[q.id] === q.correct).length;
     const score = total > 0 ? Math.round((correctAnswers / total) * 100) : 0;
     const passed = score >= 70;
+
+    // salva local
     try {
       const parsed = await readProgressFromStorage(storageKey);
       const updated = {
@@ -259,44 +274,56 @@ const LessonQuizScreen = ({ navigation, route }) => {
         [lessonId]: { score, completed: passed, lessonTitle },
       };
       await writeProgressToStorage(storageKey, updated);
-      if (currentUser?.uid) {
-        await saveLessonProgress(currentUser.uid, lessonId, {
-          lessonTitle,
-          score,
-          correctAnswers,
-          totalQuestions: total,
-          answers,
-          completed: passed,
-        });
-      }
-      const goToLessonsRoot = () =>
-        navigation.reset({
-          index: 1,
-          routes: [{ name: "Home" }, { name: "LessonList" }],
-        });
-      if (!passed) {
-        Alert.alert(
-          "Continue praticando",
-          `Você acertou ${correctAnswers}/${total} (${score}%). Tente novamente para alcançar 70% e liberar a conclusão.`,
-          [{ text: "Ok", onPress: goToLessonsRoot }]
-        );
-        return;
-      }
-      let promotedLevel = null;
-      if (currentUser?.uid) {
-        promotedLevel = await promoteIfEligible();
-      }
-      const title = promotedLevel ? "Parabens!" : "Progresso salvo";
-      const message = promotedLevel
-        ? `Você acertou ${correctAnswers}/${total} (${score}%) e avançou para o nível ${promotedLevel}!`
-        : `Você acertou ${correctAnswers}/${total} (${score}%).`;
-      Alert.alert(title, message, [{ text: "Ok", onPress: goToLessonsRoot }]);
     } catch (error) {
       Alert.alert("Erro ao salvar", "Não foi possível salvar seu progresso local.");
+      return;
     }
-  };
 
-  return (
+    // salva remoto (não bloqueia)
+    if (currentUser?.id) {
+      saveLessonProgress(currentUser.id, lessonId, {
+        lessonTitle,
+        score,
+        answers,
+        completed: passed,
+        watched: true,
+        xp: passed ? 10 : 0,
+      }).catch((err) => console.warn("[LessonQuiz] Falha ao salvar progresso Supabase:", err));
+
+      saveLessonQuizResult(currentUser.id, lessonId, {
+        score,
+        correctAnswers,
+        totalQuestions: total,
+        passed,
+        answers,
+      }).catch((err) => console.warn("[LessonQuiz] Falha ao salvar resultado detalhado:", err));
+    }
+
+    const goToLessonsRoot = () =>
+      navigation.reset({
+        index: 1,
+        routes: [{ name: "Home" }, { name: "LessonList" }],
+      });
+
+    if (!passed) {
+      Alert.alert(
+        "Continue praticando",
+        `Você acertou ${correctAnswers}/${total} (${score}%). Tente novamente para alcançar 70% e liberar a conclusão.`,
+        [{ text: "Ok", onPress: goToLessonsRoot }]
+      );
+      return;
+    }
+
+    let promotedLevel = null;
+    if (currentUser?.id) {
+      promotedLevel = await promoteIfEligible();
+    }
+    const title = promotedLevel ? "Parabéns!" : "Progresso salvo";
+    const message = promotedLevel
+      ? `Você acertou ${correctAnswers}/${total} (${score}%) e avançou para o nível ${promotedLevel}!`
+      : `Você acertou ${correctAnswers}/${total} (${score}%).`;
+    Alert.alert(title, message, [{ text: "Ok", onPress: goToLessonsRoot }]);
+  };  return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <View style={styles.container}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.8}>
@@ -318,7 +345,7 @@ const LessonQuizScreen = ({ navigation, route }) => {
             <Text style={styles.progress}>Carregando perguntas...</Text>
           </View>
         ) : total === 0 ? (
-          <Text style={styles.empty}>Esta aula ainda não possui quiz.</Text>
+          <Text style={styles.empty}>Esta aula ainda nÃ£o possui quiz.</Text>
         ) : (
           <>
             <View style={styles.card}>
@@ -337,7 +364,7 @@ const LessonQuizScreen = ({ navigation, route }) => {
                 );
               })}
             </View>
-            <CustomButton title={step === total - 1 ? "Finalizar" : "Próxima"} onPress={goNext} />
+            <CustomButton title={step === total - 1 ? "Finalizar" : "PrÃ³xima"} onPress={goNext} />
           </>
         )}
       </View>
@@ -440,3 +467,4 @@ const createStyles = (colors) =>
   });
 
 export default LessonQuizScreen;
+

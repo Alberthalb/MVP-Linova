@@ -1,89 +1,124 @@
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  updateProfile,
-  sendPasswordResetEmail,
-  verifyPasswordResetCode as firebaseVerifyPasswordResetCode,
-  confirmPasswordReset as firebaseConfirmPasswordReset,
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-  updatePassword,
-  deleteUser,
-  verifyBeforeUpdateEmail,
-} from "firebase/auth";
-import { auth } from "./firebase";
-import { createOrUpdateUserProfile, deleteUserProfile, deleteAllUserData } from "./userService";
+import { supabase } from "./supabase";
+import { createOrUpdateUserProfile } from "./userService";
 
 export const registerUser = async (name, email, password) => {
-  const credential = await createUserWithEmailAndPassword(auth, email, password);
-  const user = credential.user;
-  if (name) {
-    await updateProfile(user, { displayName: name });
-  }
-  await createOrUpdateUserProfile(user.uid, {
-    name,
+  const { data, error } = await supabase.auth.signUp({
     email,
-    createdAt: credential.user.metadata?.creationTime ? new Date(credential.user.metadata.creationTime) : new Date(),
+    password,
+    options: { data: { name } },
   });
+  if (error) throw error;
+  let user = data.user;
+  let session = data.session;
+
+  // Se o projeto não retornar sessão no signUp, tenta login imediato
+  if (!session && email && password) {
+    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password });
+    if (!loginError) {
+      session = loginData.session;
+      user = loginData.user;
+    }
+  }
+
+  if (user) {
+    try {
+      await createOrUpdateUserProfile(user.id, {
+        name,
+        email: user.email,
+        createdAt: user.created_at ? new Date(user.created_at) : new Date(),
+      });
+    } catch (profileError) {
+      console.warn("[Auth] Falha ao criar perfil no registro:", profileError);
+    }
+  }
+
   return user;
 };
 
 export const loginUser = async (email, password) => {
-  const credential = await signInWithEmailAndPassword(auth, email, password);
-  return credential.user;
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  const user = data.user;
+  try {
+    if (user?.id) {
+      await createOrUpdateUserProfile(user.id, {
+        name: user.user_metadata?.name || "",
+        email: user.email || email,
+        updatedAt: new Date(),
+      });
+    }
+  } catch (profileError) {
+    console.warn("[Auth] Falha ao atualizar/criar perfil no login:", profileError);
+  }
+  return data.user;
 };
 
-export const logoutUser = () => signOut(auth);
+export const logoutUser = () => supabase.auth.signOut();
 
 export const sendPasswordRecovery = (email) => {
-  return sendPasswordResetEmail(auth, email);
+  return supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: process.env.EXPO_PUBLIC_SUPABASE_REDIRECT_TO || undefined,
+  });
 };
 
-export const verifyResetCode = (code) => firebaseVerifyPasswordResetCode(auth, code);
-
-export const applyPasswordReset = (code, newPassword) => firebaseConfirmPasswordReset(auth, code, newPassword);
-
-export const changePassword = async (currentPassword, newPassword) => {
-  const user = auth.currentUser;
-  if (!user || !user.email) {
-    throw new Error("Usuário não autenticado");
-  }
-  const credential = EmailAuthProvider.credential(user.email, currentPassword);
-  await reauthenticateWithCredential(user, credential);
-  await updatePassword(user, newPassword);
+export const verifyResetCode = async (code) => {
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+  if (error) throw error;
+  return data.user?.email || "";
 };
 
-export const deleteAccount = async (currentPassword) => {
-  const user = auth.currentUser;
-  if (!user || !user.email) {
-    throw new Error("Usuário não autenticado");
+export const applyPasswordReset = async (code, newPassword) => {
+  const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
+  if (sessionError) throw sessionError;
+  const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+  return data.user;
+};
+
+export const changePassword = async (_currentPassword, newPassword) => {
+  const { data: userData, error: getError } = await supabase.auth.getUser();
+  if (getError) throw getError;
+  if (!userData?.user) throw new Error("Usuario nao autenticado");
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+};
+
+export const deleteAccount = async (_currentPassword) => {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !sessionData?.session?.access_token) {
+    throw sessionError || new Error("Sessão não encontrada");
   }
-  const credential = EmailAuthProvider.credential(user.email, currentPassword);
-  await reauthenticateWithCredential(user, credential);
-  await deleteUserProfile(user.uid);
-  await deleteAllUserData(user.uid);
-  await deleteUser(user);
+  const accessToken = sessionData.session.access_token;
+  const functionUrl =
+    process.env.EXPO_PUBLIC_SUPABASE_FUNCTIONS_URL ||
+    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/delete-user`;
+
+  const response = await fetch(functionUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error || "Falha ao excluir conta");
+  }
 };
 
 export const updateUserAccount = async ({ name, email }) => {
-  const user = auth.currentUser;
-  if (!user) {
-    throw new Error("Usuário não autenticado");
-  }
-  const promises = [];
-  let emailPendingVerification = false;
-  if (name && name !== user.displayName) {
-    promises.push(updateProfile(user, { displayName: name }));
-  }
-  if (email && email !== user.email) {
-    await verifyBeforeUpdateEmail(user, email);
-    emailPendingVerification = true;
-  }
-  await Promise.all(promises);
-  await createOrUpdateUserProfile(user.uid, {
-    name: name || user.displayName || "",
-    email: email || user.email || "",
+  const { data: authData, error: authError } = await supabase.auth.updateUser({
+    email: email || undefined,
+    data: name ? { name } : undefined,
   });
-  return { emailPendingVerification };
+  if (authError) throw authError;
+  const user = authData?.user;
+  if (user?.id) {
+    await createOrUpdateUserProfile(user.id, {
+      name: name || user.user_metadata?.name || "",
+      email: email || user.email || "",
+    });
+  }
+  return { emailPendingVerification: false };
 };

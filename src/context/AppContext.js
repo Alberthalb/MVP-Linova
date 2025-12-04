@@ -21,4 +21,5 @@ export const AppContext = createContext({
   moduleUnlocks: {},
   selectedModuleId: null,
   setSelectedModuleId: () => {},
+  setModuleUnlocks: () => {},
 });

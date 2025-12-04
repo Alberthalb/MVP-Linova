@@ -7,60 +7,39 @@ import { spacing, typography, radius } from "../../styles/theme";
 import { getDisplayName } from "../../utils/userName";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { createOrUpdateUserProfile, fetchInitialQuizQuestions, saveInitialQuizResult } from "../../services/userService";
+import { supabase } from "../../services/supabase";
 
-const FALLBACK_QUESTIONS = [
-  {
-    id: 1,
-    question: "Você entende saudações e frases simples?",
-    options: [
-      { text: "Ainda estou comecando", value: 1 },
-      { text: "Consigo entender bem", value: 2 },
-      { text: "Tranquilo, e facil", value: 3 },
-    ],
-  },
-  {
-    id: 2,
-    question: "Como você lida com textos curtos em inglês?",
-    options: [
-      { text: "Preciso traduzir tudo", value: 1 },
-      { text: "Leio com alguma ajuda", value: 2 },
-      { text: "Leitura fluida", value: 3 },
-    ],
-  },
-  {
-    id: 3,
-    question: "Consegue conversar informalmente?",
-    options: [
-      { text: "Ainda não", value: 1 },
-      { text: "Com pausas, mas rola", value: 2 },
-      { text: "Consigo me expressar bem", value: 3 },
-    ],
-  },
-  {
-    id: 4,
-    question: "Gramática avançada é...",
-    options: [
-      { text: "Um misterio", value: 1 },
-      { text: "Algo que estou estudando", value: 2 },
-      { text: "Confortavel", value: 3 },
-    ],
-  },
-  {
-    id: 5,
-    question: "Quais são seus objetivos?",
-    options: [
-      { text: "Aprender o basico", value: 1 },
-      { text: "Ficar intermediario rapido", value: 2 },
-      { text: "Falar e escrever avancado", value: 3 },
-    ],
-  },
-];
+const clampValue = (value, index) => {
+  const num = Number(value);
+  if (Number.isFinite(num)) {
+    return Math.min(3, Math.max(1, num));
+  }
+  return Math.min(3, Math.max(1, index + 1));
+};
+
+const normalizeQuestions = (items = []) =>
+  items.map((item, qIndex) => {
+    const opts = Array.isArray(item?.options) ? item.options : [];
+    const normalizedOptions = opts.map((opt, idx) => {
+      if (opt && typeof opt === "object") {
+        const text = opt.text || opt.label || opt.value || `Opção ${idx + 1}`;
+        const value = clampValue(opt.value ?? opt.score ?? opt.weight ?? opt.ordinal, idx);
+        return { text, value };
+      }
+      return { text: String(opt), value: clampValue(opt, idx) };
+    });
+    return {
+      id: item?.id ?? qIndex + 1,
+      question: item?.question || `Pergunta ${qIndex + 1}`,
+      options: normalizedOptions,
+    };
+  });
 
 const LevelQuizScreen = ({ navigation }) => {
   const { setLevel, userName, currentUser } = useContext(AppContext);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
-  const [questions, setQuestions] = useState(FALLBACK_QUESTIONS);
+  const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -74,11 +53,13 @@ const LevelQuizScreen = ({ navigation }) => {
       setLoading(true);
       try {
         const fetched = await fetchInitialQuizQuestions();
-        if (fetched && fetched.length) {
-          setQuestions(fetched);
+        if (!fetched || !fetched.length) {
+          throw new Error("Nenhuma pergunta disponível");
         }
+        setQuestions(normalizeQuestions(fetched));
       } catch (error) {
-        console.warn("[Quiz] Falha ao carregar perguntas, usando fallback.", error);
+        Alert.alert("Quiz indisponível", "Não foi possível carregar o quiz inicial. Tente novamente mais tarde.");
+        setQuestions([]);
       } finally {
         setLoading(false);
       }
@@ -87,7 +68,8 @@ const LevelQuizScreen = ({ navigation }) => {
   }, []);
 
   const handleSelect = (value) => {
-    setAnswers((prev) => ({ ...prev, [question.id]: value }));
+    const safeValue = clampValue(value, 0);
+    setAnswers((prev) => ({ ...prev, [question.id]: safeValue }));
   };
 
   const goNext = async () => {
@@ -103,8 +85,9 @@ const LevelQuizScreen = ({ navigation }) => {
   };
 
   const finalizeLevel = async () => {
-    const score = Object.values(answers).reduce((acc, val) => acc + val, 0);
-    const average = score / totalSteps;
+    const values = Object.values(answers).map((v) => clampValue(v, 0));
+    const score = values.reduce((acc, val) => acc + val, 0);
+    const average = values.length ? score / values.length : 0;
     let computedLevel = "A1";
     if (average >= 2.97) {
       computedLevel = "C1+";
@@ -125,16 +108,25 @@ const LevelQuizScreen = ({ navigation }) => {
     }
     const startingLevel = computedLevel;
     setLevel(startingLevel);
-    if (currentUser?.uid) {
+
+    const ensureUserId = async () => {
+      if (currentUser?.id) return currentUser.id;
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data?.user?.id) return null;
+      return data.user.id;
+    };
+
+    const uid = await ensureUserId();
+    if (uid) {
       try {
-        await saveInitialQuizResult(currentUser.uid, {
+        await saveInitialQuizResult(uid, {
           answers,
           score,
           average,
           suggestedLevel: computedLevel,
           startingLevel,
         });
-        await createOrUpdateUserProfile(currentUser.uid, {
+        await createOrUpdateUserProfile(uid, {
           level: startingLevel,
           initialQuizSuggestedLevel: computedLevel,
           initialQuizScore: score,
@@ -142,7 +134,7 @@ const LevelQuizScreen = ({ navigation }) => {
           initialQuizCompleted: true,
         });
       } catch (error) {
-        console.warn("[Quiz] Falha ao salvar resultado no Firestore:", error);
+        console.warn("[Quiz] Falha ao salvar resultado no Supabase:", error);
       }
     }
     navigation.replace("MainTabs");
@@ -152,7 +144,7 @@ const LevelQuizScreen = ({ navigation }) => {
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
       <View style={styles.container}>
         <View style={styles.hero}>
-          <Text style={styles.title}>Quiz de Nivel</Text>
+          <Text style={styles.title}>Quiz de Nível</Text>
           <Text style={styles.subtitle}>Vamos ajustar o conteúdo para você, {getDisplayName(userName)}.</Text>
           <Text style={styles.progress}>
             Pergunta {step + 1} de {totalSteps}
@@ -174,7 +166,7 @@ const LevelQuizScreen = ({ navigation }) => {
                 const selected = answers[question.id] === option.value;
                 return (
                   <TouchableOpacity
-                    key={option.text}
+                    key={`${question.id}-${option.text}`}
                     style={[styles.option, selected && styles.optionSelected]}
                     onPress={() => handleSelect(option.value)}
                     activeOpacity={0.85}

@@ -8,7 +8,6 @@ import { spacing, typography, radius } from "../../styles/theme";
 import { getDisplayName } from "../../utils/userName";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { loginUser } from "../../services/authService";
-import { getFirebaseAuthErrorMessage } from "../../utils/firebaseErrorMessage";
 
 const LoginScreen = ({ navigation }) => {
   const { setLevel, setUserName, userName, setUserEmail, currentUser, authReady } = useContext(AppContext);
@@ -58,7 +57,7 @@ const LoginScreen = ({ navigation }) => {
       } else {
         setFailedAttempts(attempts);
       }
-      Alert.alert("Erro ao entrar", getFirebaseAuthErrorMessage(error));
+      Alert.alert("Erro ao entrar", error?.message || "Não foi possível entrar. Tente novamente.");
     } finally {
       setLoading(false);
     }
