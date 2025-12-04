@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useState, useEffect } from "react";
+﻿import React, { useContext, useMemo, useState, useEffect } from "react";
 import { View, Text, StyleSheet, TextInput, Switch, Alert, TouchableOpacity, ScrollView, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -20,6 +20,9 @@ const AccountScreen = ({ navigation }) => {
   const [statInfo, setStatInfo] = useState(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState("");
   const summaryStats = progressStats || defaultSummaryStats;
 
   const forceReauth = async () => {
@@ -38,15 +41,15 @@ const AccountScreen = ({ navigation }) => {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
     if (!trimmedName || !trimmedEmail) {
-      Alert.alert("Campos obrigatórios", "Preencha nome e email.");
+      Alert.alert("Campos obrigatÃ³rios", "Preencha nome e email.");
       return;
     }
     if (!/^[\p{L} ]+$/u.test(trimmedName)) {
-      Alert.alert("Nome inválido", "Use apenas letras e espaços.");
+      Alert.alert("Nome invÃ¡lido", "Use apenas letras e espaÃ§os.");
       return;
     }
     if (!emailRegex.test(trimmedEmail)) {
-      Alert.alert("Email inválido", "Verifique o formato do email.");
+      Alert.alert("Email invÃ¡lido", "Verifique o formato do email.");
       return;
     }
     setSavingProfile(true);
@@ -63,8 +66,8 @@ const AccountScreen = ({ navigation }) => {
     } catch (error) {
       if (error?.message?.toLowerCase()?.includes("reauth")) {
         Alert.alert(
-          "Refaça o login",
-          "Por segurança, faça login novamente para alterar o email.",
+          "RefaÃ§a o login",
+          "Por seguranÃ§a, faÃ§a login novamente para alterar o email.",
           [
             { text: "Cancelar" },
             { text: "Fazer login", onPress: forceReauth },
@@ -72,7 +75,7 @@ const AccountScreen = ({ navigation }) => {
         );
         return;
       }
-      Alert.alert("Erro ao atualizar", error?.message || "Não foi possível atualizar seu perfil.");
+      Alert.alert("Erro ao atualizar", error?.message || "NÃ£o foi possÃ­vel atualizar seu perfil.");
     } finally {
       setSavingProfile(false);
     }
@@ -92,14 +95,14 @@ const AccountScreen = ({ navigation }) => {
       const rootNavigator = navigation.getParent()?.getParent();
       rootNavigator?.reset({ index: 0, routes: [{ name: "Welcome" }] });
     } catch (error) {
-      Alert.alert("Erro ao sair", error?.message || "Não foi possível sair.");
+      Alert.alert("Erro ao sair", error?.message || "NÃ£o foi possÃ­vel sair.");
     }
   };
 
-  const handleSummaryPress = (type) => {
+    const handleSummaryPress = (type) => {
     const messages = {
-      days: `Dias em que você estudou: ${summaryStats.days}.`,
-      lessons: `Aulas concluídas: ${summaryStats.lessons}.`,
+      days: `Dias em que voce estudou: ${summaryStats.days}.`,
+      lessons: `Aulas concluidas: ${summaryStats.lessons}.`,
       activities: `Atividades respondidas: ${summaryStats.activities}.`,
       xp: `Pontos acumulados: ${summaryStats.xp || 0}. Cada aula vale 10 pontos.`,
     };
@@ -107,22 +110,31 @@ const AccountScreen = ({ navigation }) => {
   };
 
   const handleDeleteAccount = () => {
-    Alert.alert("Excluir conta", "Essa ação é permanente. Deseja prosseguir?", [
-      { text: "Cancelar", style: "cancel" },
-      { text: "Excluir", style: "destructive", onPress: confirmDeleteAccount },
-    ]);
+    setDeletePassword("");
+    setDeleteConfirm("");
+    setDeleteModalVisible(true);
   };
 
   const confirmDeleteAccount = async () => {
+    const confirmationText = deleteConfirm.trim().toUpperCase();
+    if (!deletePassword.trim()) {
+      Alert.alert("Senha obrigatoria", "Informe sua senha para prosseguir.");
+      return;
+    }
+    if (confirmationText !== "EXCLUIR") {
+      Alert.alert('Confirme digitando "EXCLUIR"', 'Digite "EXCLUIR" no campo de confirmacao para continuar.');
+      return;
+    }
     setDeleteLoading(true);
     try {
-      await deleteAccount();
+      await deleteAccount(deletePassword.trim());
       const rootNavigator = navigation.getParent()?.getParent();
       rootNavigator?.reset({ index: 0, routes: [{ name: "Welcome" }] });
     } catch (error) {
-      Alert.alert("Erro ao excluir", error?.message || "Não foi possível excluir sua conta.");
+      Alert.alert("Erro ao excluir", error?.message || "Nao foi possivel excluir sua conta.");
     } finally {
       setDeleteLoading(false);
+      setDeleteModalVisible(false);
     }
   };
 
@@ -130,7 +142,7 @@ const AccountScreen = ({ navigation }) => {
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.heading}>Conta</Text>
-        <Text style={styles.subheading}>Gerencie seu perfil, preferências e resumo.</Text>
+        <Text style={styles.subheading}>Gerencie seu perfil, preferÃªncias e resumo.</Text>
 
         <View style={styles.card}>
           <View style={styles.cardHeader}>
@@ -146,12 +158,12 @@ const AccountScreen = ({ navigation }) => {
 
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Preferências</Text>
+            <Text style={styles.cardTitle}>PreferÃªncias</Text>
             <Feather name="sliders" size={16} color={theme.primary} />
           </View>
           <View style={styles.row}>
             <View style={styles.rowText}>
-              <Text style={styles.prefTitle}>Notificações</Text>
+              <Text style={styles.prefTitle}>NotificaÃ§Ãµes</Text>
               <Text style={styles.prefSubtitle}>Lembretes e novidades{"\n"}(em desenvolvimento)</Text>
             </View>
             <Switch value={notifications} onValueChange={setNotifications} trackColor={{ true: theme.primary }} />
@@ -177,7 +189,7 @@ const AccountScreen = ({ navigation }) => {
               <Text style={styles.summaryValue}>{summaryStats.xp || 0} pontos</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.summaryHint}>Esses números refletem seu uso recente e ajudam a acompanhar seu progresso.</Text>
+          <Text style={styles.summaryHint}>Esses nÃºmeros refletem seu uso recente e ajudam a acompanhar seu progresso.</Text>
         </View>
 
         <CustomButton title="Alterar senha" variant="ghost" onPress={() => navigation.navigate("ChangePassword")} />
@@ -192,6 +204,47 @@ const AccountScreen = ({ navigation }) => {
             <TouchableOpacity style={styles.modalButton} activeOpacity={0.8} onPress={() => setStatInfo(null)}>
               <Text style={styles.modalButtonText}>OK</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      <Modal transparent animationType="fade" visible={deleteModalVisible} onRequestClose={() => setDeleteModalVisible(false)} statusBarTranslucent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Excluir conta</Text>
+            <Text style={styles.modalText}>Essa acao e permanente. Digite sua senha e escreva EXCLUIR para confirmar.</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              placeholder="Sua senha"
+              secureTextEntry
+              autoCapitalize="none"
+            />
+            <TextInput
+              style={styles.modalInput}
+              value={deleteConfirm}
+              onChangeText={setDeleteConfirm}
+              placeholder='Digite "EXCLUIR" para confirmar'
+              autoCapitalize="characters"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={() => setDeleteModalVisible(false)}
+                style={[styles.modalActionButton, styles.modalActionGhost]}
+                activeOpacity={0.8}
+                disabled={deleteLoading}
+              >
+                <Text style={[styles.modalActionText, styles.modalActionGhostText]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={confirmDeleteAccount}
+                style={styles.modalActionButton}
+                activeOpacity={0.9}
+                disabled={deleteLoading}
+              >
+                <Text style={styles.modalActionText}>{deleteLoading ? "Excluindo..." : "Excluir"}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -378,3 +431,5 @@ const createStyles = (colors) =>
   });
 
 export default AccountScreen;
+
+

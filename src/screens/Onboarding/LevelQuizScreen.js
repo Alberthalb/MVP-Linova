@@ -88,25 +88,36 @@ const LevelQuizScreen = ({ navigation }) => {
     const values = Object.values(answers).map((v) => clampValue(v, 0));
     const score = values.reduce((acc, val) => acc + val, 0);
     const average = values.length ? score / values.length : 0;
-    let computedLevel = "A1";
+    let suggestedLevel = "A1";
     if (average >= 2.97) {
-      computedLevel = "C1+";
+      suggestedLevel = "C1+";
     } else if (average >= 2.9) {
-      computedLevel = "C1";
+      suggestedLevel = "C1";
     } else if (average >= 2.7) {
-      computedLevel = "B2+";
+      suggestedLevel = "B2+";
     } else if (average >= 2.5) {
-      computedLevel = "B2";
+      suggestedLevel = "B2";
     } else if (average >= 2.3) {
-      computedLevel = "B1+";
+      suggestedLevel = "B1+";
     } else if (average >= 2.1) {
-      computedLevel = "B1";
+      suggestedLevel = "B1";
     } else if (average >= 1.9) {
-      computedLevel = "A2+";
+      suggestedLevel = "A2+";
     } else if (average >= 1.6) {
-      computedLevel = "A2";
+      suggestedLevel = "A2";
     }
-    const startingLevel = computedLevel;
+
+    // Começa sempre no nível mais baixo, apenas guardando a sugestão
+    const startingLevel = "A1";
+
+    // Descobre o primeiro módulo (menor "order") para apontar o módulo inicial
+    let firstModuleId = null;
+    try {
+      const { data: modulesData } = await supabase.from("modules").select("id, order").order("order", { ascending: true }).limit(1);
+      firstModuleId = modulesData?.[0]?.id || null;
+    } catch (_err) {
+      firstModuleId = null;
+    }
     setLevel(startingLevel);
 
     const ensureUserId = async () => {
@@ -123,15 +134,17 @@ const LevelQuizScreen = ({ navigation }) => {
           answers,
           score,
           average,
-          suggestedLevel: computedLevel,
+          suggestedLevel,
           startingLevel,
         });
         await createOrUpdateUserProfile(uid, {
           level: startingLevel,
-          initialQuizSuggestedLevel: computedLevel,
+          initialQuizSuggestedLevel: suggestedLevel,
           initialQuizScore: score,
           initialQuizAverage: average,
           initialQuizCompleted: true,
+          currentModuleId: firstModuleId,
+          current_module_id: firstModuleId,
         });
       } catch (error) {
         console.warn("[Quiz] Falha ao salvar resultado no Supabase:", error);

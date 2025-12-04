@@ -44,6 +44,14 @@ serve(async (req) => {
 
   // Delete user-owned rows (RLS may block service role; use admin deletes)
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
+  // Delete auth user first. If it fails, we abort to avoid "ghost" auth accounts.
+  const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(userId);
+  if (deleteUserError) {
+    return new Response(JSON.stringify({ error: `Failed to delete user: ${deleteUserError.message}` }), { status: 500 });
+  }
+
+  // Then delete user-owned rows (best-effort, but we stop if any fail)
   const deletions = [
     adminClient.from("user_module_unlocks").delete().eq("user_id", userId),
     adminClient.from("user_lessons_completed").delete().eq("user_id", userId),
@@ -56,11 +64,6 @@ serve(async (req) => {
     if (error) {
       return new Response(JSON.stringify({ error: `Failed to delete data: ${error.message}` }), { status: 500 });
     }
-  }
-
-  const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(userId);
-  if (deleteUserError) {
-    return new Response(JSON.stringify({ error: `Failed to delete user: ${deleteUserError.message}` }), { status: 500 });
   }
 
   return new Response(JSON.stringify({ success: true }), { status: 200 });

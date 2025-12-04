@@ -83,12 +83,20 @@ export const changePassword = async (_currentPassword, newPassword) => {
   if (error) throw error;
 };
 
-export const deleteAccount = async (_currentPassword) => {
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-  if (sessionError || !sessionData?.session?.access_token) {
-    throw sessionError || new Error("Sessão não encontrada");
-  }
-  const accessToken = sessionData.session.access_token;
+export const deleteAccount = async (currentPassword) => {
+  // Reautentica com a senha informada para evitar exclusões indevidas
+  const { data: userData, error: getUserError } = await supabase.auth.getUser();
+  if (getUserError || !userData?.user?.email) throw getUserError || new Error("Usuário não autenticado");
+
+  const email = userData.user.email;
+  if (!currentPassword) throw new Error("Informe sua senha para excluir a conta.");
+
+  const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password: currentPassword });
+  if (loginError) throw new Error(loginError.message || "Senha incorreta");
+
+  const accessToken = loginData?.session?.access_token;
+  if (!accessToken) throw new Error("Sessão não encontrada");
+
   const functionUrl =
     process.env.EXPO_PUBLIC_SUPABASE_FUNCTIONS_URL ||
     `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/delete-user`;
