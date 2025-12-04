@@ -82,7 +82,7 @@ export const saveLessonProgress = async (uid, lessonId, payload = {}) => {
     score: payload?.score ?? null,
     watched: payload?.watched ?? null,
     completed: payload?.completed ?? null,
-    xp: payload?.xp ?? 10,
+    xp: payload?.xp ?? 0,
     answers: payload?.answers ?? null,
     updated_at: new Date().toISOString(),
   };

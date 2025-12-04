@@ -17,9 +17,11 @@ export const AppContext = createContext({
   authReady: false,
   lessonsCompleted: {},
   progressStats: { days: 0, lessons: 0, activities: 0, xp: 0 },
+  setProgressStats: () => {},
   modules: [],
   moduleUnlocks: {},
   selectedModuleId: null,
   setSelectedModuleId: () => {},
   setModuleUnlocks: () => {},
+  setLessonsCompleted: () => {},
 });

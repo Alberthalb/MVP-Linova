@@ -152,7 +152,7 @@ const normalizeQuiz = (quizData) => {
 const LessonQuizScreen = ({ navigation, route }) => {
   const lessonId = route?.params?.lessonId ?? 0;
   const lessonTitle = route?.params?.lessonTitle ?? "Aula";
-  const { currentUser, level, setLevel } = useContext(AppContext);
+  const { currentUser, level, setLevel, setLessonsCompleted, setProgressStats } = useContext(AppContext);
   const [lessonLevel, setLessonLevel] = useState(route?.params?.lessonLevel || null);
   const [accessDenied, setAccessDenied] = useState(false);
   const [questions, setQuestions] = useState([]);
@@ -265,6 +265,7 @@ const LessonQuizScreen = ({ navigation, route }) => {
     const correctAnswers = questions.filter((q) => answers[q.id] === q.correct).length;
     const score = total > 0 ? Math.round((correctAnswers / total) * 100) : 0;
     const passed = score >= 70;
+    const xpEarned = passed ? 10 : 0;
 
     // salva local
     try {
@@ -279,24 +280,64 @@ const LessonQuizScreen = ({ navigation, route }) => {
       return;
     }
 
-    // salva remoto (não bloqueia)
+    // salva remoto e propaga erros (para garantir conclusao e XP)
     if (currentUser?.id) {
-      saveLessonProgress(currentUser.id, lessonId, {
-        lessonTitle,
-        score,
-        answers,
-        completed: passed,
-        watched: true,
-        xp: passed ? 10 : 0,
-      }).catch((err) => console.warn("[LessonQuiz] Falha ao salvar progresso Supabase:", err));
+      try {
+        await saveLessonProgress(currentUser.id, lessonId, {
+          lessonTitle,
+          score,
+          answers,
+          completed: passed,
+          watched: true,
+          xp: xpEarned,
+        });
+      } catch (err) {
+        console.warn("[LessonQuiz] Falha ao salvar progresso Supabase:", err);
+        Alert.alert("Erro ao salvar", "Nao foi possivel salvar seu progresso no servidor. Tente novamente.");
+        return;
+      }
 
-      saveLessonQuizResult(currentUser.id, lessonId, {
-        score,
-        correctAnswers,
-        totalQuestions: total,
-        passed,
-        answers,
-      }).catch((err) => console.warn("[LessonQuiz] Falha ao salvar resultado detalhado:", err));
+      try {
+        await saveLessonQuizResult(currentUser.id, lessonId, {
+          score,
+          correctAnswers,
+          totalQuestions: total,
+          passed,
+          answers,
+        });
+      } catch (err) {
+        console.warn("[LessonQuiz] Falha ao salvar resultado detalhado:", err);
+        // segue mesmo se o detalhado falhar
+      }
+    }
+
+    // atualiza contexto imediatamente (realtime pode demorar)
+    if (setLessonsCompleted) {
+      const nowIso = new Date().toISOString();
+      setLessonsCompleted((prev) => ({
+        ...prev,
+        [lessonId]: {
+          ...(prev?.[lessonId] || {}),
+          lesson_id: lessonId,
+          lesson_title: lessonTitle,
+          score,
+          completed: passed,
+          watched: true,
+          xp: xpEarned,
+          updated_at: nowIso,
+        },
+      }));
+    }
+    if (setProgressStats) {
+      // resumo local simples: conta apenas conclusoes
+      setProgressStats((prev) => {
+        const prevLessons = Number.isFinite(prev?.lessons) ? prev.lessons : 0;
+        const prevXp = Number.isFinite(prev?.xp) ? prev.xp : 0;
+        // so incrementa se passou
+        return passed
+          ? { ...prev, lessons: prevLessons + 1, activities: prevLessons + 1, xp: prevXp + xpEarned }
+          : prev || { days: 0, lessons: 0, activities: 0, xp: 0 };
+      });
     }
 
     const goToLessonsRoot = () =>

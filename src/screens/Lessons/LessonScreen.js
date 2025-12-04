@@ -578,12 +578,14 @@ const resolveMediaUrl = async (targetPath, bucket = mediaBucket) => {
   }, [showControls, scheduleHideControls]);
 
   const progressEntry = lessonsCompleted[lessonId] || {};
-  const hasWatched = watchSaved || !!(progressEntry.watched || progressEntry.completed || progressEntry.score !== undefined);
+  const progressWatched = progressEntry.watched || progressEntry.completed || progressEntry.score !== undefined;
+  const hasWatched = watchSaved || !!progressWatched;
   const isLessonAccessible = canAccessLevel(userLevel, lesson?.level);
 
   useEffect(() => {
-    setWatchSaved(false);
-  }, [lessonId]);
+    // Sincroniza com o progresso ja salvo para manter o quiz liberado ao reabrir a aula
+    setWatchSaved(Boolean(progressWatched));
+  }, [lessonId, progressWatched]);
 
   useEffect(() => {
     if (!lesson || !userLevel || !lesson.level || isLessonAccessible) return;

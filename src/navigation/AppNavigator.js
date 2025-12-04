@@ -139,11 +139,10 @@ const summarizeProgress = (rows = []) => {
   let xp = 0;
   rows.forEach((entry) => {
     const score = Number.isFinite(entry?.score) ? entry.score : Number(entry?.score);
-    const watched = entry?.watched === true;
     const completed = entry?.completed === true || (Number.isFinite(score) && score >= 70);
-    if (completed || watched) {
+    if (completed) {
       lessons += 1;
-      xp += entry?.xp ?? 10;
+      xp += Number.isFinite(entry?.xp) ? entry.xp : 10;
       const ts = entry?.updated_at || entry?.updatedAt;
       let dateObj = null;
       if (ts instanceof Date) {
@@ -435,7 +434,9 @@ const AppNavigator = () => {
       setCurrentUser,
       authReady,
       lessonsCompleted,
+      setLessonsCompleted,
       progressStats,
+      setProgressStats,
       modules,
       moduleUnlocks,
       selectedModuleId,
@@ -452,7 +453,9 @@ const AppNavigator = () => {
       currentUser,
       authReady,
       lessonsCompleted,
+      setLessonsCompleted,
       progressStats,
+      setProgressStats,
       modules,
       moduleUnlocks,
       selectedModuleId,

@@ -79,9 +79,10 @@ const ModuleListScreen = ({ navigation }) => {
       summary[moduleId].total += 1;
       const entry = lessonsCompleted[lesson.id] || {};
       const score = Number.isFinite(entry.score) ? entry.score : Number(entry.score);
-      const completed = entry.watched === true || (Number.isFinite(score) && score >= 70);
+      const completed = entry.completed === true || (Number.isFinite(score) && score >= 70);
       if (completed) {
-        summary[moduleId].earned += 10;
+        const xpEarned = Number.isFinite(entry?.xp) ? entry.xp : 10;
+        summary[moduleId].earned += xpEarned;
       }
     });
     Object.keys(summary).forEach((key) => {
