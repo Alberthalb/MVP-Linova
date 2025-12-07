@@ -57,7 +57,11 @@ const LoginScreen = ({ navigation }) => {
       } else {
         setFailedAttempts(attempts);
       }
-      Alert.alert("Erro ao entrar", error?.message || "Não foi possível entrar. Tente novamente.");
+      const message =
+        error?.message?.toLowerCase()?.includes("invalid login")
+          ? "E-mail ou senha inválidos"
+          : error?.message || "Não foi possível entrar. Tente novamente.";
+      Alert.alert("Erro ao entrar", message);
     } finally {
       setLoading(false);
     }
@@ -78,7 +82,7 @@ const LoginScreen = ({ navigation }) => {
   const svgTint = "rgba(17,24,39,0.75)";
   const arrowColor = theme.accent;
 
-  const showSkip = authReady && currentUser;
+  const showSkip = false;
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>

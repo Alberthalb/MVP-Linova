@@ -332,11 +332,10 @@ const LessonQuizScreen = ({ navigation, route }) => {
       // resumo local simples: conta apenas conclusoes
       setProgressStats((prev) => {
         const prevLessons = Number.isFinite(prev?.lessons) ? prev.lessons : 0;
+        const prevActivities = Number.isFinite(prev?.activities) ? prev.activities : 0;
         const prevXp = Number.isFinite(prev?.xp) ? prev.xp : 0;
-        // so incrementa se passou
-        return passed
-          ? { ...prev, lessons: prevLessons + 1, activities: prevLessons + 1, xp: prevXp + xpEarned }
-          : prev || { days: 0, lessons: 0, activities: 0, xp: 0 };
+        if (!passed) return prev || { days: 0, lessons: 0, activities: 0, xp: 0 };
+        return { ...prev, lessons: prevLessons + 1, activities: prevActivities + 1, xp: prevXp + xpEarned };
       });
     }
 
@@ -364,7 +363,9 @@ const LessonQuizScreen = ({ navigation, route }) => {
       ? `Você acertou ${correctAnswers}/${total} (${score}%) e avançou para o nível ${promotedLevel}!`
       : `Você acertou ${correctAnswers}/${total} (${score}%).`;
     Alert.alert(title, message, [{ text: "Ok", onPress: goToLessonsRoot }]);
-  };  return (
+  };
+
+  return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <View style={styles.container}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()} activeOpacity={0.8}>

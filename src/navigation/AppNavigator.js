@@ -6,13 +6,13 @@ import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Animated, useColorScheme, StatusBar } from "react-native";
 import * as Linking from "expo-linking";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { typography, lightColors, darkColors } from "../styles/theme";
 import { useThemeColors } from "../hooks/useThemeColors";
 import useTabSwipeNavigation from "../hooks/useTabSwipeNavigation";
 import { AppContext } from "../context/AppContext";
 import { supabase } from "../services/supabase";
 import { createOrUpdateUserProfile, getUserProfile } from "../services/userService";
-import { ensureSeedData } from "../services/seedService";
 import { getDisplayName } from "../utils/userName";
 import { defaultSummaryStats } from "../utils/progressStats";
 import SplashScreen from "../screens/Splash/SplashScreen";
@@ -39,6 +39,12 @@ const AccountStackNavigator = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 const TAB_ROUTE_ORDER = ["TabHome", "TabAccount", "TabSettings"];
 const RESET_LINK_SCHEMES = ["linova"];
+const CACHE_KEYS = {
+  modules: "linova:modules",
+  moduleLessonCounts: "linova:moduleLessonCounts",
+  progress: (uid) => `linova:user:${uid || "anon"}:progress`,
+  unlocks: (uid) => `linova:user:${uid || "anon"}:unlocks`,
+};
 
 const HomeStack = () => (
   <Stack.Navigator
@@ -177,9 +183,20 @@ const AppNavigator = () => {
   const [modules, setModules] = useState([]);
   const [moduleUnlocks, setModuleUnlocks] = useState({});
   const [selectedModuleId, setSelectedModuleId] = useState(null);
+  const [moduleLessonCounts, setModuleLessonCounts] = useState({});
   const systemScheme = useColorScheme();
   const isDark = darkMode === null ? systemScheme === "dark" : darkMode;
   const palette = isDark ? darkColors : lightColors;
+  const prefetched = useRef(false);
+  const cacheHydrated = useRef(false);
+  const lastPrefetchedUserId = useRef(null);
+
+  // Reseta preload e hidratação quando o usuário muda (logout/login)
+  useEffect(() => {
+    prefetched.current = false;
+    cacheHydrated.current = false;
+    lastPrefetchedUserId.current = currentUser?.id || null;
+  }, [currentUser?.id]);
 
   const navigateWithResetCode = (code) => {
     if (!code) return;
@@ -240,7 +257,7 @@ const AppNavigator = () => {
         return;
       }
       setUserEmail(user.email || "");
-      let resolvedName = user.user_metadata?.name || user.email || "";
+      let resolvedName = user.user_metadata?.name || fullName || userName || user.email || "";
       let profile = null;
       try {
         profile = await getUserProfile(user.id);
@@ -268,7 +285,7 @@ const AppNavigator = () => {
       setFullName(resolvedName);
       setUserName(getDisplayName(resolvedName, user.email));
     },
-    [setSelectedModuleId]
+    [fullName, setSelectedModuleId, userName]
   );
 
   useEffect(() => {
@@ -294,25 +311,139 @@ const AppNavigator = () => {
   }, [loadProfile]);
 
   useEffect(() => {
+    if (authReady && !cacheHydrated.current) {
+      cacheHydrated.current = true;
+      const hydrateFromCache = async () => {
+        try {
+          const keys = [
+            CACHE_KEYS.modules,
+            CACHE_KEYS.moduleLessonCounts,
+            CACHE_KEYS.progress(currentUser?.id),
+            CACHE_KEYS.unlocks(currentUser?.id),
+          ];
+          const entries = await AsyncStorage.multiGet(keys);
+          entries.forEach(([key, value]) => {
+            if (!value) return;
+            try {
+              const parsed = JSON.parse(value);
+              if (key === CACHE_KEYS.modules && Array.isArray(parsed)) {
+                setModules(parsed);
+              } else if (key === CACHE_KEYS.moduleLessonCounts && parsed && typeof parsed === "object") {
+                setModuleLessonCounts(parsed);
+              } else if (key === CACHE_KEYS.progress(currentUser?.id) && parsed && typeof parsed === "object") {
+                setLessonsCompleted(parsed);
+                setProgressStats(summarizeProgress(Object.values(parsed)));
+              } else if (key === CACHE_KEYS.unlocks(currentUser?.id) && parsed && typeof parsed === "object") {
+                setModuleUnlocks(parsed);
+              }
+            } catch (_err) {
+              // ignore cache parse errors
+            }
+          });
+        } catch (error) {
+          console.warn("[Cache] Falha ao hidratar dados locais:", error);
+        }
+      };
+      hydrateFromCache();
+    }
+  }, [authReady, currentUser?.id]);
+
+  useEffect(() => {
+    if (!authReady || prefetched.current) return;
+    if (lastPrefetchedUserId.current !== currentUser?.id) {
+      prefetched.current = false;
+    }
+    if (prefetched.current) return;
+    prefetched.current = true;
+    lastPrefetchedUserId.current = currentUser?.id || null;
+    const preload = async () => {
+      try {
+        const modulesPromise = supabase
+          .from("modules")
+          .select("id,title,description,level_tag,order")
+          .order("order", { ascending: true });
+        const lessonsPromise = supabase.from("lessons").select("id,module_id");
+        const progressPromise = currentUser?.id
+          ? supabase
+              .from("user_lessons_completed")
+              .select("lesson_id,score,completed,xp,watched,updated_at")
+              .eq("user_id", currentUser.id)
+          : Promise.resolve({ data: [] });
+        const unlocksPromise = currentUser?.id
+          ? supabase
+              .from("user_module_unlocks")
+              .select("module_id,status,passed,score,correctcount,totalquestions,reason,unlocked_at")
+              .eq("user_id", currentUser.id)
+          : Promise.resolve({ data: [] });
+
+        const [modulesRes, lessonsRes, progressRes, unlocksRes] = await Promise.all([
+          modulesPromise,
+          lessonsPromise,
+          progressPromise,
+          unlocksPromise,
+        ]);
+
+        if (!modulesRes.error && modulesRes.data) {
+          const list = (modulesRes.data || []).map((item, index) => ({
+            id: item.id,
+            title: item.title || `Módulo ${index + 1}`,
+            description: item.description || "",
+            levelTag: item.level_tag || item.levelTag || item.level || item.tag || null,
+            order: item.order ?? index,
+          }));
+          setModules(list);
+          AsyncStorage.setItem(CACHE_KEYS.modules, JSON.stringify(list)).catch(() => {});
+        }
+
+        if (!lessonsRes.error && lessonsRes.data) {
+          const counts = {};
+          (lessonsRes.data || []).forEach((row) => {
+            const mId = row.module_id || null;
+            counts[mId] = (counts[mId] || 0) + 1;
+          });
+          setModuleLessonCounts(counts);
+          AsyncStorage.setItem(CACHE_KEYS.moduleLessonCounts, JSON.stringify(counts)).catch(() => {});
+        }
+
+        if (!progressRes.error && progressRes.data) {
+          const map = {};
+          (progressRes.data || []).forEach((row) => {
+            map[row.lesson_id] = row;
+          });
+          setLessonsCompleted(map);
+          setProgressStats(summarizeProgress(progressRes.data || []));
+          AsyncStorage.setItem(CACHE_KEYS.progress(currentUser?.id), JSON.stringify(map)).catch(() => {});
+        }
+
+        if (!unlocksRes.error && unlocksRes.data) {
+          const unlockMap = {};
+          (unlocksRes.data || []).forEach((row) => {
+            unlockMap[row.module_id] = row;
+          });
+          setModuleUnlocks(unlockMap);
+          AsyncStorage.setItem(CACHE_KEYS.unlocks(currentUser?.id), JSON.stringify(unlockMap)).catch(() => {});
+        }
+      } catch (error) {
+        console.warn("[Preload] Falha ao pré-carregar dados:", error);
+      }
+    };
+    preload();
+  }, [authReady, currentUser?.id]);
+
+  useEffect(() => {
     const fetchModules = async () => {
-      const { data, error } = await supabase.from("modules").select("*").order("order", { ascending: true });
+      const { data, error } = await supabase
+        .from("modules")
+        .select("id,title,description,level_tag,order")
+        .order("order", { ascending: true });
       if (error) {
         console.warn("[Modules] Falha ao carregar:", error);
         setModules([]);
         return;
       }
       if (!data || !data.length) {
-        console.warn("[Modules] Nenhum módulo retornado. Inserindo seeds de teste...");
-        await ensureSeedData();
-        const { data: seeded } = await supabase.from("modules").select("*").order("order", { ascending: true });
-        const listSeeded = (seeded || []).map((item, index) => ({
-          id: item.id,
-          title: item.title || `Módulo ${index + 1}`,
-          description: item.description || "",
-          levelTag: item.level_tag || item.levelTag || item.level || item.tag || null,
-          order: item.order ?? index,
-        }));
-        setModules(listSeeded);
+        console.warn("[Modules] Nenhum módulo retornado pelo backend.");
+        setModules([]);
         return;
       }
       const list = (data || []).map((item, index) => ({
@@ -349,7 +480,7 @@ const AppNavigator = () => {
     const fetchProgress = async () => {
       const { data, error } = await supabase
         .from("user_lessons_completed")
-        .select("*")
+        .select("lesson_id,score,completed,xp,updated_at,watched,answers")
         .eq("user_id", currentUser.id);
       if (error) {
         console.warn("[Progress] Falha ao carregar:", error);
@@ -389,7 +520,10 @@ const AppNavigator = () => {
     }
     let active = true;
     const fetchUnlocks = async () => {
-      const { data, error } = await supabase.from("user_module_unlocks").select("*").eq("user_id", currentUser.id);
+      const { data, error } = await supabase
+        .from("user_module_unlocks")
+        .select("module_id,status,passed,score,correctcount,totalquestions,reason,unlocked_at")
+        .eq("user_id", currentUser.id);
       if (error) {
         console.warn("[ModuleUnlocks] Falha ao carregar:", error);
         if (active) setModuleUnlocks({});
@@ -442,6 +576,8 @@ const AppNavigator = () => {
       selectedModuleId,
       setSelectedModuleId,
       setModuleUnlocks,
+      moduleLessonCounts,
+      setModuleLessonCounts,
     }),
     [
       level,
@@ -461,6 +597,8 @@ const AppNavigator = () => {
       selectedModuleId,
       setSelectedModuleId,
       setModuleUnlocks,
+      moduleLessonCounts,
+      setModuleLessonCounts,
     ]
   );
 

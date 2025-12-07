@@ -47,16 +47,17 @@ const LessonListScreen = ({ navigation, route }) => {
     [firstModuleId, moduleUnlocks, modulesEnabled]
   );
 
-  const fetchLessons = useCallback(
-    async (moduleId) => {
-      setLoading(true);
-      const baseQuery = supabase.from("lessons").select("*");
+  const fetchLessons = useCallback(async (moduleId) => {
+    setLoading(true);
+    try {
+      const baseQuery = supabase
+        .from("lessons")
+        .select('id,title,level,module_id,"order",duration_ms,video_path,caption_path,video_url,caption_url,transcript');
       const queryBuilder = moduleId ? baseQuery.eq("module_id", moduleId) : baseQuery;
       const { data, error } = await queryBuilder.order("order", { ascending: true });
       if (error) {
         console.warn("[Lessons] Falha ao carregar:", error);
         setLessons([]);
-        setLoading(false);
         return;
       }
       const list = (data || []).map((row, index) => ({
@@ -75,10 +76,13 @@ const LessonListScreen = ({ navigation, route }) => {
       }));
       const sorted = list.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       setLessons(sorted);
+    } catch (err) {
+      console.warn("[Lessons] Erro inesperado ao carregar:", err);
+      setLessons([]);
+    } finally {
       setLoading(false);
-    },
-    []
-  );
+    }
+  }, []);
 
   useEffect(() => {
     const moduleFromRoute = route?.params?.moduleId;

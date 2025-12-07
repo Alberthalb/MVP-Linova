@@ -14,7 +14,7 @@ const PASSING_SCORE = 70;
 const ModuleAssessmentScreen = ({ navigation, route }) => {
   const moduleId = route?.params?.moduleId;
   const moduleTitle = route?.params?.moduleTitle || "Módulo";
-  const { currentUser, setSelectedModuleId, setModuleUnlocks } = useContext(AppContext);
+  const { currentUser, setSelectedModuleId, setModuleUnlocks, setLevel, modules = [] } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [questions, setQuestions] = useState([]);
@@ -97,6 +97,9 @@ const ModuleAssessmentScreen = ({ navigation, route }) => {
       return;
     }
     try {
+      const moduleInfo = modules.find((m) => m.id === moduleId);
+      const moduleLevel = moduleInfo?.levelTag || moduleInfo?.level || null;
+
       if (currentUser?.id && moduleId) {
         await saveModuleUnlock(currentUser.id, moduleId, {
           passed: true,
@@ -104,11 +107,18 @@ const ModuleAssessmentScreen = ({ navigation, route }) => {
           correctCount,
           totalQuestions: total,
         });
-        await createOrUpdateUserProfile(currentUser.id, { currentModuleId: moduleId, current_module_id: moduleId });
+        await createOrUpdateUserProfile(currentUser.id, {
+          currentModuleId: moduleId,
+          current_module_id: moduleId,
+          ...(moduleLevel ? { level: moduleLevel } : {}),
+        });
         setModuleUnlocks((prev) => ({
           ...(prev || {}),
           [moduleId]: { passed: true, status: "unlocked", score, correctCount, totalQuestions: total, moduleTitle },
         }));
+        if (moduleLevel) {
+          setLevel(moduleLevel);
+        }
       }
       setSelectedModuleId(moduleId);
       Alert.alert("Módulo liberado", "Prova concluída com sucesso. O módulo foi desbloqueado.", [

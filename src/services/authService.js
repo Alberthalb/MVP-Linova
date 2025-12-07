@@ -75,10 +75,17 @@ export const applyPasswordReset = async (code, newPassword) => {
   return data.user;
 };
 
-export const changePassword = async (_currentPassword, newPassword) => {
+export const changePassword = async (currentPassword, newPassword) => {
+  // Reautentica com a senha atual antes de trocar
   const { data: userData, error: getError } = await supabase.auth.getUser();
   if (getError) throw getError;
-  if (!userData?.user) throw new Error("Usuario nao autenticado");
+  const email = userData?.user?.email;
+  if (!email) throw new Error("Usuario nao autenticado");
+
+  // Confirma senha atual
+  const { error: loginError } = await supabase.auth.signInWithPassword({ email, password: currentPassword });
+  if (loginError) throw new Error("Senha atual incorreta");
+
   const { error } = await supabase.auth.updateUser({ password: newPassword });
   if (error) throw error;
 };

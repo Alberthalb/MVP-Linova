@@ -110,6 +110,7 @@ create table if not exists public.user_lessons_completed (
 );
 create index if not exists idx_user_lessons_completed_user on public.user_lessons_completed(user_id);
 create index if not exists idx_user_lessons_completed_lesson on public.user_lessons_completed(lesson_id);
+create index if not exists idx_user_lessons_completed_user_updated on public.user_lessons_completed(user_id, updated_at desc);
 
 -- Lesson quiz results (per attempt)
 create table if not exists public.user_lesson_quiz_results (
@@ -243,18 +244,6 @@ begin
   end if;
 end;
 $$;
-
--- TEMP: Disable RLS on all tables (policies remain but are ignored while RLS is disabled)
-alter table if exists public.modules disable row level security;
-alter table if exists public.module_assessment_questions disable row level security;
-alter table if exists public.lessons disable row level security;
-alter table if exists public.lesson_quizzes disable row level security;
-alter table if exists public.user_profiles disable row level security;
-alter table if exists public.initial_quiz_questions disable row level security;
-alter table if exists public.initial_quiz_results disable row level security;
-alter table if exists public.user_lessons_completed disable row level security;
-alter table if exists public.user_lesson_quiz_results disable row level security;
-alter table if exists public.user_module_unlocks disable row level security;
 
 -- Seed: módulos, aulas, quizzes de módulo e aulas, perguntas do quiz inicial (ajuste conforme necessário)
 insert into public.modules (id, title, description, level_tag, "order")

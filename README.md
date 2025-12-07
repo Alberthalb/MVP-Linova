@@ -14,7 +14,7 @@ Aplicativo Expo/React Native com aulas em vídeo, legendas, transcrição e quiz
 ## Principais features
 - Quiz de nivelamento (A1–C2) que sugere nível inicial.
 - Player de vídeo com troca de qualidade, legendas `.vtt`, transcrição e fullscreen custom.
-- Timeline interativa com seek por gesto e controles que autoescondem.
+- Timeline interativa com seek por gesto e controles que se ocultam automaticamente.
 - Gate por nível e por aula: só libera quiz após assistir; promoção automática com nota ≥70%.
 - Lista de módulos/aulas com bloqueio por XP ou prova de capacidade.
 - Conta/segurança: atualização de perfil, troca de senha, logout e exclusão completa via Edge Function.
@@ -36,8 +36,8 @@ Aplicativo Expo/React Native com aulas em vídeo, legendas, transcrição e quiz
 
 ## Estrutura (essencial para leitura de código)
 ```
-App.js                 # Entrada Expo e carregamento de fonts
-app.config.js          # Config dinâmica e injeção de .env
+App.js                        # Entrada Expo e carregamento de fonts
+app.config.js                 # Config dinâmica e injeção de .env
 src/navigation/AppNavigator.js   # Stacks, tabs, deep linking seguro
 src/context/AppContext.js        # Estado global (auth, progresso, tema, módulos)
 src/screens/Lessons/LessonListScreen.js  # Lista de aulas por módulo
@@ -53,7 +53,7 @@ src/styles/theme.js              # Paleta, tipografia, spacing
 
 ## Como rodar localmente
 1. `npm install`
-2. Copie `.env.example` → `.env` e preencha `EXPO_PUBLIC_SUPABASE_URL/ANON_KEY` com seu projeto Supabase (e, se usar Storage, defina `EXPO_PUBLIC_SUPABASE_BUCKET`).
+2. Copie `.env` (veja o exemplo) e preencha `EXPO_PUBLIC_SUPABASE_URL/ANON_KEY` com seu projeto Supabase (e, se usar Storage, defina `EXPO_PUBLIC_SUPABASE_BUCKET`). Nunca commite chaves reais.
 3. `npm start` (Expo Dev Tools) ou `npm run android` / `npm run ios`.
 4. Faça login/cadastro e percorra: quiz de nível → lista de aulas → player (fullscreen + legendas) → quiz → promoção de nível.
 

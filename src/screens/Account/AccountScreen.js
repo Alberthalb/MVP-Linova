@@ -1,4 +1,4 @@
-﻿import React, { useContext, useMemo, useState, useEffect } from "react";
+import React, { useContext, useMemo, useState, useEffect } from "react";
 import { View, Text, StyleSheet, TextInput, Switch, Alert, TouchableOpacity, ScrollView, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -11,19 +11,64 @@ import { logoutUser, deleteAccount, updateUserAccount } from "../../services/aut
 import { defaultSummaryStats } from "../../utils/progressStats";
 
 const AccountScreen = ({ navigation }) => {
-  const { userName, setUserName, fullName, setFullName, userEmail, setUserEmail, progressStats } = useContext(AppContext);
+  const {
+    userName,
+    setUserName,
+    fullName,
+    setFullName,
+    userEmail,
+    setUserEmail,
+    progressStats,
+    lessonsCompleted = {},
+  } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [name, setName] = useState(fullName || userName || "");
   const [email, setEmail] = useState(userEmail || "");
   const [notifications, setNotifications] = useState(true);
   const [statInfo, setStatInfo] = useState(null);
+  const [profileInfo, setProfileInfo] = useState(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const summaryStats = progressStats || defaultSummaryStats;
+
+  const completedLessonsWithActivity = useMemo(() => {
+    let count = 0;
+    Object.values(lessonsCompleted || {}).forEach((entry) => {
+      const score = Number.isFinite(entry?.score) ? entry.score : Number(entry?.score);
+      const completed = entry?.completed === true;
+      if (completed || (Number.isFinite(score) && score >= 70)) {
+        count += 1;
+      }
+    });
+    return count;
+  }, [lessonsCompleted]);
+
+  const streakDays = useMemo(() => {
+    const daysSet = new Set();
+    Object.values(lessonsCompleted || {}).forEach((entry) => {
+      const score = Number.isFinite(entry?.score) ? entry.score : Number(entry?.score);
+      const watched = entry?.watched === true;
+      const studied = watched || (Number.isFinite(score) && score > 0);
+      if (!studied) return;
+      const ts = entry?.updatedAt || entry?.updated_at;
+      let dateObj = null;
+      if (ts?.toDate) {
+        dateObj = ts.toDate();
+      } else if (typeof ts === "number") {
+        dateObj = new Date(ts);
+      } else if (typeof ts === "string") {
+        dateObj = new Date(ts);
+      }
+      if (dateObj && !Number.isNaN(dateObj.getTime())) {
+        daysSet.add(dateObj.toISOString().slice(0, 10));
+      }
+    });
+    return daysSet.size || summaryStats.days || 0;
+  }, [lessonsCompleted, summaryStats.days]);
 
   const forceReauth = async () => {
     try {
@@ -41,15 +86,15 @@ const AccountScreen = ({ navigation }) => {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
     if (!trimmedName || !trimmedEmail) {
-      Alert.alert("Campos obrigatÃ³rios", "Preencha nome e email.");
+      Alert.alert("Campos obrigatórios", "Preencha nome e email.");
       return;
     }
     if (!/^[\p{L} ]+$/u.test(trimmedName)) {
-      Alert.alert("Nome invÃ¡lido", "Use apenas letras e espaÃ§os.");
+      Alert.alert("Nome inválido", "Use apenas letras e espaços.");
       return;
     }
     if (!emailRegex.test(trimmedEmail)) {
-      Alert.alert("Email invÃ¡lido", "Verifique o formato do email.");
+      Alert.alert("Email inválido", "Verifique o formato do email.");
       return;
     }
     setSavingProfile(true);
@@ -59,23 +104,23 @@ const AccountScreen = ({ navigation }) => {
       setUserName(getDisplayName(trimmedName, trimmedEmail));
       setUserEmail(trimmedEmail);
       if (result?.emailPendingVerification) {
-        Alert.alert("Verifique seu email", `Enviamos um link para ${trimmedEmail}. Confirme para concluir a troca de email.`);
+        setProfileInfo(`Enviamos um email para ${trimmedEmail}. Confirme para concluir a troca de email.`);
       } else {
-        Alert.alert("Perfil atualizado", "Seu nome e email foram atualizados.");
+        setProfileInfo("Perfil atualizado com sucesso.");
       }
     } catch (error) {
       if (error?.message?.toLowerCase()?.includes("reauth")) {
         Alert.alert(
-          "RefaÃ§a o login",
-          "Por seguranÃ§a, faÃ§a login novamente para alterar o email.",
+          "Refaça o login",
+          "Por segurança, faça login novamente para alterar o email.",
           [
             { text: "Cancelar" },
             { text: "Fazer login", onPress: forceReauth },
           ]
         );
-        return;
+      } else {
+        Alert.alert("Erro ao atualizar", error?.message || "Não foi possível atualizar seu perfil.");
       }
-      Alert.alert("Erro ao atualizar", error?.message || "NÃ£o foi possÃ­vel atualizar seu perfil.");
     } finally {
       setSavingProfile(false);
     }
@@ -95,19 +140,18 @@ const AccountScreen = ({ navigation }) => {
       const rootNavigator = navigation.getParent()?.getParent();
       rootNavigator?.reset({ index: 0, routes: [{ name: "Welcome" }] });
     } catch (error) {
-      Alert.alert("Erro ao sair", error?.message || "NÃ£o foi possÃ­vel sair.");
+      Alert.alert("Erro ao sair", error?.message || "Não foi possível sair.");
     }
   };
 
-    const handleSummaryPress = (type) => {
-    const messages = {
-      days: `Dias em que voce estudou: ${summaryStats.days}.`,
-      lessons: `Aulas concluidas: ${summaryStats.lessons}.`,
-      activities: `Atividades respondidas: ${summaryStats.activities}.`,
-      xp: `Pontos acumulados: ${summaryStats.xp || 0}. Cada aula vale 10 pontos.`,
-    };
-    setStatInfo(messages[type]);
+const handleSummaryPress = (type) => {
+  const messages = {
+    days: `Dias em que você estudou: ${streakDays}.`,
+    lessons: `Aulas concluídas (com atividades): ${completedLessonsWithActivity}.`,
+    xp: `Pontos acumulados: ${summaryStats.xp || 0}. Cada aula vale 10 pontos.`,
   };
+  setStatInfo(messages[type]);
+};
 
   const handleDeleteAccount = () => {
     setDeletePassword("");
@@ -118,11 +162,11 @@ const AccountScreen = ({ navigation }) => {
   const confirmDeleteAccount = async () => {
     const confirmationText = deleteConfirm.trim().toUpperCase();
     if (!deletePassword.trim()) {
-      Alert.alert("Senha obrigatoria", "Informe sua senha para prosseguir.");
+      Alert.alert("Senha obrigatória", "Informe sua senha para prosseguir.");
       return;
     }
     if (confirmationText !== "EXCLUIR") {
-      Alert.alert('Confirme digitando "EXCLUIR"', 'Digite "EXCLUIR" no campo de confirmacao para continuar.');
+      Alert.alert('Confirme digitando "EXCLUIR"', 'Digite "EXCLUIR" no campo de confirmação para continuar.');
       return;
     }
     setDeleteLoading(true);
@@ -131,7 +175,11 @@ const AccountScreen = ({ navigation }) => {
       const rootNavigator = navigation.getParent()?.getParent();
       rootNavigator?.reset({ index: 0, routes: [{ name: "Welcome" }] });
     } catch (error) {
-      Alert.alert("Erro ao excluir", error?.message || "Nao foi possivel excluir sua conta.");
+      const message =
+        error?.message?.toLowerCase()?.includes("invalid login")
+          ? "Senha inválida"
+          : error?.message || "Não foi possível excluir sua conta.";
+      Alert.alert("Erro ao excluir", message);
     } finally {
       setDeleteLoading(false);
       setDeleteModalVisible(false);
@@ -142,7 +190,7 @@ const AccountScreen = ({ navigation }) => {
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.heading}>Conta</Text>
-        <Text style={styles.subheading}>Gerencie seu perfil, preferÃªncias e resumo.</Text>
+        <Text style={styles.subheading}>Gerencie seu perfil, preferências e resumo.</Text>
 
         <View style={styles.card}>
           <View style={styles.cardHeader}>
@@ -158,12 +206,12 @@ const AccountScreen = ({ navigation }) => {
 
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>PreferÃªncias</Text>
+            <Text style={styles.cardTitle}>Preferências</Text>
             <Feather name="sliders" size={16} color={theme.primary} />
           </View>
           <View style={styles.row}>
             <View style={styles.rowText}>
-              <Text style={styles.prefTitle}>NotificaÃ§Ãµes</Text>
+              <Text style={styles.prefTitle}>Notificações</Text>
               <Text style={styles.prefSubtitle}>Lembretes e novidades{"\n"}(em desenvolvimento)</Text>
             </View>
             <Switch value={notifications} onValueChange={setNotifications} trackColor={{ true: theme.primary }} />
@@ -176,20 +224,32 @@ const AccountScreen = ({ navigation }) => {
             <Feather name="activity" size={16} color={theme.primary} />
           </View>
           <View style={styles.summaryRow}>
-            <TouchableOpacity style={[styles.summaryTile, { borderColor: "#3D7FFC" }]} activeOpacity={0.85} onPress={() => handleSummaryPress("lessons")}>
+            <TouchableOpacity
+              style={[styles.summaryTile, { borderColor: "#3D7FFC" }]}
+              activeOpacity={0.85}
+              onPress={() => handleSummaryPress("lessons")}
+            >
               <Feather name="book" size={16} color="#3D7FFC" />
-              <Text style={styles.summaryValue}>{summaryStats.lessons} aulas</Text>
+              <Text style={styles.summaryValue}>{completedLessonsWithActivity} aulas</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.summaryTile, { borderColor: "#FFB347" }]} activeOpacity={0.85} onPress={() => handleSummaryPress("activities")}>
-              <Feather name="check-circle" size={16} color="#FFB347" />
-              <Text style={styles.summaryValue}>{summaryStats.activities} atividades</Text>
+            <TouchableOpacity
+              style={[styles.summaryTile, { borderColor: "#FFB347" }]}
+              activeOpacity={0.85}
+              onPress={() => handleSummaryPress("days")}
+            >
+              <Feather name="sunrise" size={16} color="#FFB347" />
+              <Text style={styles.summaryValue}>{streakDays} dias</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.summaryTile, { borderColor: "#8B5CF6" }]} activeOpacity={0.85} onPress={() => handleSummaryPress("xp")}>
+            <TouchableOpacity
+              style={[styles.summaryTile, { borderColor: "#8B5CF6" }]}
+              activeOpacity={0.85}
+              onPress={() => handleSummaryPress("xp")}
+            >
               <Feather name="star" size={16} color="#8B5CF6" />
               <Text style={styles.summaryValue}>{summaryStats.xp || 0} pontos</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.summaryHint}>Esses nÃºmeros refletem seu uso recente e ajudam a acompanhar seu progresso.</Text>
+          <Text style={styles.summaryHint}>Esses números refletem seu uso recente e ajudam a acompanhar seu progresso.</Text>
         </View>
 
         <CustomButton title="Alterar senha" variant="ghost" onPress={() => navigation.navigate("ChangePassword")} />
@@ -207,11 +267,28 @@ const AccountScreen = ({ navigation }) => {
           </View>
         </View>
       </Modal>
-      <Modal transparent animationType="fade" visible={deleteModalVisible} onRequestClose={() => setDeleteModalVisible(false)} statusBarTranslucent>
+      <Modal transparent animationType="fade" visible={!!profileInfo} onRequestClose={() => setProfileInfo(null)} statusBarTranslucent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Confirme seu email</Text>
+            <Text style={styles.modalText}>{profileInfo}</Text>
+            <TouchableOpacity style={styles.modalButton} activeOpacity={0.8} onPress={() => setProfileInfo(null)}>
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        transparent
+        animationType="fade"
+        visible={deleteModalVisible}
+        onRequestClose={() => setDeleteModalVisible(false)}
+        statusBarTranslucent
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Excluir conta</Text>
-            <Text style={styles.modalText}>Essa acao e permanente. Digite sua senha e escreva EXCLUIR para confirmar.</Text>
+            <Text style={styles.modalText}>Essa acao é permanente. Digite sua senha e escreva EXCLUIR para confirmar.</Text>
             <TextInput
               style={styles.modalInput}
               value={deletePassword}
@@ -431,5 +508,3 @@ const createStyles = (colors) =>
   });
 
 export default AccountScreen;
-
-

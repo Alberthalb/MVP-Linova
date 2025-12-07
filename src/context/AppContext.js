@@ -24,4 +24,6 @@ export const AppContext = createContext({
   setSelectedModuleId: () => {},
   setModuleUnlocks: () => {},
   setLessonsCompleted: () => {},
+  moduleLessonCounts: {},
+  setModuleLessonCounts: () => {},
 });

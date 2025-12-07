@@ -315,7 +315,7 @@ const resolveMediaUrl = async (targetPath, bucket = mediaBucket) => {
     try {
       const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(targetPath);
       if (publicData?.publicUrl) return publicData.publicUrl;
-      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(targetPath, 3600);
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(targetPath, 21600);
       if (error) {
         console.warn("[Lesson] Falha ao gerar URL assinada no Supabase:", error.message);
         return null;
@@ -600,7 +600,7 @@ const resolveMediaUrl = async (targetPath, bucket = mediaBucket) => {
     Alert.alert("Conteudo bloqueado", lockedMessage, [{ text: "Ok", onPress: () => navigation.goBack() }]);
   }, [isLessonAccessible, lesson, navigation, userLevel]);
 
-  const handleQuizPress = () => {
+  const handleQuizPress = async () => {
     if (!isLessonAccessible) {
       const targetLevel = lesson?.level ? String(lesson.level) : "superior";
       const currentLevelLabel = userLevel ? String(userLevel) : "atual";
@@ -610,13 +610,42 @@ const resolveMediaUrl = async (targetPath, bucket = mediaBucket) => {
         ". Complete seu nivel atual (" +
         currentLevelLabel +
         ") para desbloquear.";
-      Alert.alert(
-        "Conteudo bloqueado",
-        lockedMessage
-      );
+      Alert.alert("Conteudo bloqueado", lockedMessage);
       return;
     }
-    if (!hasWatched) {
+
+    const alreadyWatched =
+      watchSaved ||
+      progressEntry?.watched === true ||
+      progressEntry?.completed === true ||
+      typeof progressEntry?.score === "number";
+
+    if (!alreadyWatched && currentUser?.id && (lesson?.id || lessonId)) {
+      try {
+        const { data } = await supabase
+          .from("user_lessons_completed")
+          .select("watched,completed,score")
+          .eq("user_id", currentUser.id)
+          .eq("lesson_id", lesson?.id || lessonId)
+          .maybeSingle();
+        const serverWatched = data?.watched === true || data?.completed === true || typeof data?.score === "number";
+        if (serverWatched) {
+          setWatchSaved(true);
+        }
+        if (serverWatched) {
+          navigation.navigate("LessonQuiz", {
+            lessonId: lesson?.id || lessonId,
+            lessonTitle: lesson?.title,
+            lessonLevel: lesson?.level,
+          });
+          return;
+        }
+      } catch (error) {
+        console.warn("[Lesson] Falha ao verificar progresso no servidor:", error);
+      }
+    }
+
+    if (!alreadyWatched) {
       Alert.alert(
         "Assista antes do quiz",
         "Veja a aula ate o final para liberar o quiz. Depois, voce pode refazer quantas vezes quiser.",
@@ -624,6 +653,7 @@ const resolveMediaUrl = async (targetPath, bucket = mediaBucket) => {
       );
       return;
     }
+
     navigation.navigate("LessonQuiz", {
       lessonId: lesson?.id || lessonId,
       lessonTitle: lesson?.title,

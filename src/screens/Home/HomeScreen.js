@@ -1,7 +1,9 @@
-import React, { useContext, useMemo, useState, useEffect } from "react";
+import React, { useContext, useMemo, useState, useEffect, useCallback } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
+import { BackHandler } from "react-native";
 import CustomButton from "../../components/CustomButton";
 import { AppContext } from "../../context/AppContext";
 import { spacing, typography, radius } from "../../styles/theme";
@@ -27,7 +29,17 @@ const levelDescriptions = {
 };
 
 const HomeScreen = ({ navigation }) => {
-  const { level, userName, setDarkMode, authReady, progressStats, selectedModuleId, lessonsCompleted = {} } =
+  const {
+    level,
+    userName,
+    setDarkMode,
+    authReady,
+    progressStats,
+    selectedModuleId,
+    lessonsCompleted = {},
+    moduleLessonCounts = {},
+    setModuleLessonCounts,
+  } =
     useContext(AppContext);
   const displayName = authReady && userName ? getDisplayName(userName, null, "Linova") : "";
   const [isIaModalVisible, setIaModalVisible] = useState(false);
@@ -47,7 +59,14 @@ const HomeScreen = ({ navigation }) => {
   const [levelInfo, setLevelInfo] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lessonsMeta, setLessonsMeta] = useState({});
-  const [moduleLessonCounts, setModuleLessonCounts] = useState({});
+  const metaCounts = useMemo(() => {
+    const counts = {};
+    Object.values(lessonsMeta || {}).forEach((moduleId) => {
+      const key = moduleId || null;
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    return counts;
+  }, [lessonsMeta]);
   const stats = progressStats || defaultSummaryStats;
   const theme = useThemeColors();
   const isDarkMode = useIsDarkMode();
@@ -56,18 +75,24 @@ const HomeScreen = ({ navigation }) => {
   const currentModuleId = selectedModuleId || Object.keys(moduleLessonCounts)[0] || null;
   const lessonToModule = lessonsMeta;
   const xpFromCurrentModule = Object.entries(lessonsCompleted).reduce((acc, [lessonId, entry]) => {
-    const moduleId = lessonToModule[lessonId] || null;
-    if (currentModuleId && moduleId !== currentModuleId) return acc;
+    const moduleId = lessonToModule[lessonId] ?? null;
+    if (!moduleId || (currentModuleId && moduleId !== currentModuleId)) return acc;
     const score = Number.isFinite(entry.score) ? entry.score : Number(entry.score);
     const completed = entry.watched === true || (Number.isFinite(score) && score >= 70);
     return completed ? acc + 10 : acc;
   }, 0);
-  const xpTargetForModule = (moduleLessonCounts[currentModuleId] || 15) * 10;
+  const moduleLessonCount = moduleLessonCounts[currentModuleId] || metaCounts[currentModuleId] || 0;
+  const xpTargetForModule = moduleLessonCount > 0 ? moduleLessonCount * 10 : null;
   const xpTotal = xpFromCurrentModule;
   const currentIndex = LEVEL_SEQUENCE.indexOf(currentLevelLabel);
   const nextLevel = currentIndex >= 0 && currentIndex < LEVEL_SEQUENCE.length - 1 ? LEVEL_SEQUENCE[currentIndex + 1] : null;
-  const progressPercent = nextLevel ? min100(Math.round((xpTotal / xpTargetForModule) * 100)) : 100;
-  const remainingXp = nextLevel ? Math.max(0, xpTargetForModule - xpTotal) : 0;
+  const progressPercent =
+    nextLevel && xpTargetForModule
+      ? min100(Math.round((xpTotal / xpTargetForModule) * 100))
+      : nextLevel
+      ? 0
+      : 100;
+  const remainingXp = nextLevel && xpTargetForModule ? Math.max(0, xpTargetForModule - xpTotal) : null;
   const streakDays = useMemo(() => {
     const daysSet = new Set();
     Object.values(lessonsCompleted || {}).forEach((entry) => {
@@ -75,7 +100,7 @@ const HomeScreen = ({ navigation }) => {
       const watched = entry?.watched === true;
       const studied = watched || (Number.isFinite(score) && score > 0);
       if (!studied) return;
-      const ts = entry?.updatedAt;
+      const ts = entry?.updatedAt || entry?.updated_at;
       let dateObj = null;
       if (ts?.toDate) {
         dateObj = ts.toDate();
@@ -109,6 +134,22 @@ const HomeScreen = ({ navigation }) => {
     setIaModalVisible(true);
   };
   const closeIaModal = () => setIaModalVisible(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        // Evita voltar para telas de onboarding; sai do app a partir da Home
+        BackHandler.exitApp();
+        return true;
+      };
+      const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+      return () => {
+        if (subscription && typeof subscription.remove === "function") {
+          subscription.remove();
+        }
+      };
+    }, [])
+  );
   useEffect(() => {
     const fetchLessonsMeta = async () => {
       const { data, error } = await supabase.from("lessons").select("id,module_id,module");
@@ -143,6 +184,29 @@ const HomeScreen = ({ navigation }) => {
   const handleLevelInfo = () => {
     setLevelInfo(true);
   };
+
+  useEffect(() => {
+    if (!currentModuleId) return;
+    let active = true;
+    const fetchCount = async () => {
+      const { count, error } = await supabase
+        .from("lessons")
+        .select("id", { count: "exact", head: true })
+        .eq("module_id", currentModuleId);
+      if (!active) return;
+      if (error) {
+        console.warn("[Modules] Falha ao contar aulas do módulo:", error);
+        return;
+      }
+      if (typeof count === "number") {
+        setModuleLessonCounts((prev) => ({ ...(prev || {}), [currentModuleId]: count }));
+      }
+    };
+    fetchCount();
+    return () => {
+      active = false;
+    };
+  }, [currentModuleId, setModuleLessonCounts]);
 
   const handleThemeToggle = () => {
     setDarkMode((prev) => {
@@ -245,18 +309,10 @@ const HomeScreen = ({ navigation }) => {
             ) : levelInfo ? (
               <>
                 <Text style={styles.modalTitle}>Seu nivel e: {currentLevelLabel}</Text>
-                {nextLevel ? (
-                  <>
-                    <View style={styles.progressWide}>
-                      <View style={[styles.progressFillWide, { width: `${progressPercent}%` }]} />
-                    </View>
-                    <Text style={styles.modalText}>
-                      Faltam {remainingXp} pontos para chegar em {nextLevel}. Cada aula concluida vale +10 pontos.
-                    </Text>
-                  </>
-                ) : (
-                  <Text style={styles.modalText}>Voce atingiu o nivel maximo.</Text>
-                )}
+                <Text style={styles.modalText}>
+                  Cada aula concluida com atividade vale +10 pontos. Complete as aulas do modulo atual para avançar ou faça a prova de
+                  capacidade do próximo modulo para pular rapidamente.
+                </Text>
                 <View style={styles.levelList}>
                   {Object.entries(levelDescriptions).map(([lvl, desc]) => (
                     <Text key={lvl} style={[styles.levelLine, lvl === currentLevelLabel && styles.levelLineActive]}>

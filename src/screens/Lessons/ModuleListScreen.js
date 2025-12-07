@@ -31,7 +31,16 @@ const levelBucket = (tag) => {
 };
 
 const ModuleListScreen = ({ navigation }) => {
-  const { modules, moduleUnlocks, selectedModuleId, setSelectedModuleId, currentUser, lessonsCompleted = {} } =
+  const {
+    modules,
+    moduleUnlocks,
+    selectedModuleId,
+    setSelectedModuleId,
+    currentUser,
+    lessonsCompleted = {},
+    moduleLessonCounts = {},
+    setModuleLessonCounts,
+  } =
     useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -50,12 +59,52 @@ const ModuleListScreen = ({ navigation }) => {
       if (error) {
         console.warn("[Lessons] Falha ao carregar lista para progresso:", error);
         setLessons([]);
+        setModuleLessonCounts({});
         return;
       }
-      setLessons(data || []);
+      const list = data || [];
+      setLessons(list);
+      const counts = {};
+      list.forEach((row) => {
+        const mId = row.module_id || null;
+        counts[mId] = (counts[mId] || 0) + 1;
+      });
+      setModuleLessonCounts(counts);
     };
     lessonsRefetch();
   }, []);
+
+  useEffect(() => {
+    if (!modules || !modules.length) return;
+    let active = true;
+    const fetchCounts = async () => {
+      const ids = modules.map((m) => m.id).filter(Boolean);
+      if (!ids.length) return;
+      const counts = {};
+      try {
+        const { data, error } = await supabase
+          .from("lessons")
+          .select("module_id", { count: "exact" })
+          .in("module_id", ids);
+        if (!active) return;
+        if (error) {
+          console.warn("[Lessons] Falha ao contar aulas por módulo:", error);
+          return;
+        }
+        (data || []).forEach((row) => {
+          const mId = row.module_id || null;
+          counts[mId] = (counts[mId] || 0) + 1;
+        });
+        setModuleLessonCounts((prev) => ({ ...(prev || {}), ...counts }));
+      } catch (err) {
+        console.warn("[Lessons] Erro inesperado ao contar aulas:", err);
+      }
+    };
+    fetchCounts();
+    return () => {
+      active = false;
+    };
+  }, [modules]);
 
   const availableModules = useMemo(() => {
     return (modules || [])
@@ -85,11 +134,18 @@ const ModuleListScreen = ({ navigation }) => {
         summary[moduleId].earned += xpEarned;
       }
     });
+    // Preenche total mesmo se não carregamos as lições (usa contagem agregada)
+    Object.entries(moduleLessonCounts || {}).forEach(([moduleId, count]) => {
+      if (!summary[moduleId]) {
+        summary[moduleId] = { total: 0, earned: 0 };
+      }
+      summary[moduleId].total = Math.max(summary[moduleId].total, count || 0);
+    });
     Object.keys(summary).forEach((key) => {
-      summary[key].required = summary[key].total * 10;
+      summary[key].required = (summary[key].total || 0) * 10;
     });
     return summary;
-  }, [lessons, lessonsCompleted, firstModuleId]);
+  }, [lessons, lessonsCompleted, firstModuleId, moduleLessonCounts]);
 
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -115,6 +171,16 @@ const ModuleListScreen = ({ navigation }) => {
     return availableModules.filter((item) => levelBucket(item.levelTag || item.level || item.tag) === filter);
   }, [availableModules, filter]);
 
+  const canTakeAssessment = useCallback(
+    (moduleIndex) => {
+      if (!availableModules.length) return false;
+      const currentIndex = availableModules.findIndex((m) => m.id === selectedModuleId);
+      if (currentIndex === -1) return moduleIndex === 0;
+      return moduleIndex === currentIndex + 1;
+    },
+    [availableModules, selectedModuleId]
+  );
+
   const handleEnterModule = async (module) => {
     if (!module?.id) {
       Alert.alert("Modulo indisponivel", "Nenhum modulo cadastrado no momento.");
@@ -123,6 +189,10 @@ const ModuleListScreen = ({ navigation }) => {
     const moduleIndex = availableModules.findIndex((item) => item.id === module.id);
     const unlocked = isUnlocked(module.id, moduleIndex);
     if (!unlocked) {
+      if (!canTakeAssessment(moduleIndex)) {
+        Alert.alert("Prova indisponivel", "Voce so pode fazer a prova do proximo modulo na sequencia.");
+        return;
+      }
       setPendingModule(module);
       return;
     }
