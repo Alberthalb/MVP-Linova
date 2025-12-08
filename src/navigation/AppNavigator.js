@@ -38,10 +38,11 @@ const Stack = createNativeStackNavigator();
 const AccountStackNavigator = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 const TAB_ROUTE_ORDER = ["TabHome", "TabAccount", "TabSettings"];
-const RESET_LINK_SCHEMES = ["linova"];
+const RESET_LINK_SCHEMES = ["linova", "https", "http", "exp", "exp+linova"];
 const CACHE_KEYS = {
   modules: "linova:modules",
   moduleLessonCounts: "linova:moduleLessonCounts",
+  lessonModuleMap: "linova:lessonModuleMap",
   progress: (uid) => `linova:user:${uid || "anon"}:progress`,
   unlocks: (uid) => `linova:user:${uid || "anon"}:unlocks`,
 };
@@ -184,6 +185,7 @@ const AppNavigator = () => {
   const [moduleUnlocks, setModuleUnlocks] = useState({});
   const [selectedModuleId, setSelectedModuleId] = useState(null);
   const [moduleLessonCounts, setModuleLessonCounts] = useState({});
+  const [lessonModuleMap, setLessonModuleMap] = useState({});
   const systemScheme = useColorScheme();
   const isDark = darkMode === null ? systemScheme === "dark" : darkMode;
   const palette = isDark ? darkColors : lightColors;
@@ -244,6 +246,7 @@ const AppNavigator = () => {
   const loadProfile = useCallback(
     async (user) => {
       if (!user?.id) {
+        await clearUserCache(lastPrefetchedUserId.current || currentUser?.id || null);
         setUserEmail("");
         setUserName("Linova");
         setFullName("");
@@ -253,6 +256,8 @@ const AppNavigator = () => {
         setModules([]);
         setModuleUnlocks({});
         setSelectedModuleId(null);
+        setModuleLessonCounts({});
+        setLessonModuleMap({});
         setUserProfile(null);
         return;
       }
@@ -274,14 +279,6 @@ const AppNavigator = () => {
       } catch (error) {
         console.warn("[Auth] Falha ao carregar perfil:", error);
       }
-      try {
-        await createOrUpdateUserProfile(user.id, {
-          name: resolvedName,
-          email: user.email || profile?.email || "",
-        });
-      } catch (error) {
-        console.warn("[Auth] Falha ao criar/atualizar perfil:", error);
-      }
       setFullName(resolvedName);
       setUserName(getDisplayName(resolvedName, user.email));
     },
@@ -299,7 +296,12 @@ const AppNavigator = () => {
       }
     };
     init();
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_OUT") {
+        await clearUserCache(lastPrefetchedUserId.current || currentUser?.id || null);
+      } else if (event === "USER_UPDATED" && lastPrefetchedUserId.current && session?.user?.id && session.user.id !== lastPrefetchedUserId.current) {
+        await clearUserCache(lastPrefetchedUserId.current);
+      }
       setCurrentUser(session?.user || null);
       await loadProfile(session?.user);
       setAuthReady(true);
@@ -308,18 +310,36 @@ const AppNavigator = () => {
       mounted = false;
       listener?.subscription?.unsubscribe?.();
     };
-  }, [loadProfile]);
+  }, [clearUserCache, currentUser?.id, loadProfile]);
+
+  const clearUserCache = useCallback(
+    async (uid) => {
+      const userKey = uid || "anon";
+      const keys = [CACHE_KEYS.progress(userKey), CACHE_KEYS.unlocks(userKey)];
+      try {
+        await AsyncStorage.multiRemove(keys);
+        if (!uid) {
+          await AsyncStorage.multiRemove([CACHE_KEYS.modules, CACHE_KEYS.moduleLessonCounts, CACHE_KEYS.lessonModuleMap]);
+        }
+      } catch (_err) {
+        // ignore cache remove errors
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (authReady && !cacheHydrated.current) {
       cacheHydrated.current = true;
       const hydrateFromCache = async () => {
         try {
+          const userKey = currentUser?.id || "anon";
           const keys = [
             CACHE_KEYS.modules,
             CACHE_KEYS.moduleLessonCounts,
-            CACHE_KEYS.progress(currentUser?.id),
-            CACHE_KEYS.unlocks(currentUser?.id),
+            CACHE_KEYS.lessonModuleMap,
+            CACHE_KEYS.progress(userKey),
+            CACHE_KEYS.unlocks(userKey),
           ];
           const entries = await AsyncStorage.multiGet(keys);
           entries.forEach(([key, value]) => {
@@ -330,10 +350,12 @@ const AppNavigator = () => {
                 setModules(parsed);
               } else if (key === CACHE_KEYS.moduleLessonCounts && parsed && typeof parsed === "object") {
                 setModuleLessonCounts(parsed);
-              } else if (key === CACHE_KEYS.progress(currentUser?.id) && parsed && typeof parsed === "object") {
+              } else if (key === CACHE_KEYS.lessonModuleMap && parsed && typeof parsed === "object") {
+                setLessonModuleMap(parsed);
+              } else if (key === CACHE_KEYS.progress(userKey) && parsed && typeof parsed === "object") {
                 setLessonsCompleted(parsed);
                 setProgressStats(summarizeProgress(Object.values(parsed)));
-              } else if (key === CACHE_KEYS.unlocks(currentUser?.id) && parsed && typeof parsed === "object") {
+              } else if (key === CACHE_KEYS.unlocks(userKey) && parsed && typeof parsed === "object") {
                 setModuleUnlocks(parsed);
               }
             } catch (_err) {
@@ -397,12 +419,18 @@ const AppNavigator = () => {
 
         if (!lessonsRes.error && lessonsRes.data) {
           const counts = {};
+          const lessonToModule = {};
           (lessonsRes.data || []).forEach((row) => {
             const mId = row.module_id || null;
             counts[mId] = (counts[mId] || 0) + 1;
+            if (row.id) {
+              lessonToModule[row.id] = mId;
+            }
           });
           setModuleLessonCounts(counts);
+          setLessonModuleMap(lessonToModule);
           AsyncStorage.setItem(CACHE_KEYS.moduleLessonCounts, JSON.stringify(counts)).catch(() => {});
+          AsyncStorage.setItem(CACHE_KEYS.lessonModuleMap, JSON.stringify(lessonToModule)).catch(() => {});
         }
 
         if (!progressRes.error && progressRes.data) {
@@ -431,32 +459,8 @@ const AppNavigator = () => {
   }, [authReady, currentUser?.id]);
 
   useEffect(() => {
-    const fetchModules = async () => {
-      const { data, error } = await supabase
-        .from("modules")
-        .select("id,title,description,level_tag,order")
-        .order("order", { ascending: true });
-      if (error) {
-        console.warn("[Modules] Falha ao carregar:", error);
-        setModules([]);
-        return;
-      }
-      if (!data || !data.length) {
-        console.warn("[Modules] Nenhum módulo retornado pelo backend.");
-        setModules([]);
-        return;
-      }
-      const list = (data || []).map((item, index) => ({
-        id: item.id,
-        title: item.title || `Módulo ${index + 1}`,
-        description: item.description || "",
-        levelTag: item.level_tag || item.levelTag || item.level || item.tag || null,
-        order: item.order ?? index,
-      }));
-      setModules(list);
-    };
-    fetchModules();
-  }, []);
+    // Modulos sao carregados no preload para evitar requisicoes duplicadas.
+  }, [modules?.length]);
 
   useEffect(() => {
     if (selectedModuleId || !modules?.length) return;
@@ -578,6 +582,8 @@ const AppNavigator = () => {
       setModuleUnlocks,
       moduleLessonCounts,
       setModuleLessonCounts,
+      lessonModuleMap,
+      setLessonModuleMap,
     }),
     [
       level,
@@ -599,6 +605,8 @@ const AppNavigator = () => {
       setModuleUnlocks,
       moduleLessonCounts,
       setModuleLessonCounts,
+      lessonModuleMap,
+      setLessonModuleMap,
     ]
   );
 

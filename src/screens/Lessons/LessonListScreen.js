@@ -1,11 +1,11 @@
-import React, { useContext, useEffect, useMemo, useState, useCallback } from "react";
+﻿import React, { useContext, useEffect, useMemo, useState, useCallback } from "react";
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { spacing, typography, radius } from "../../styles/theme";
 import { AppContext } from "../../context/AppContext";
 import { useThemeColors } from "../../hooks/useThemeColors";
-import { canAccessLevel } from "../../utils/levels";
+import { canAccessLevel, LEVEL_SEQUENCE } from "../../utils/levels";
 import CustomButton from "../../components/CustomButton";
 import { supabase } from "../../services/supabase";
 
@@ -31,7 +31,7 @@ const LessonListScreen = ({ navigation, route }) => {
   const moduleNameById = useMemo(() => {
     const map = {};
     modules.forEach((m) => {
-      if (m?.id) map[m.id] = m.title || m.name || `Modulo ${m.id}`;
+      if (m?.id) map[m.id] = m.title || m.name || `módulo ${m.id}`;
     });
     return map;
   }, [modules]);
@@ -42,9 +42,14 @@ const LessonListScreen = ({ navigation, route }) => {
       if (!moduleId) return true;
       if (moduleId === firstModuleId) return true;
       const entry = moduleUnlocks?.[moduleId];
-      return entry?.passed === true || entry?.status === "unlocked";
+      const moduleInfo = modules.find((m) => m.id === moduleId);
+      const moduleLevel = moduleInfo?.levelTag || moduleInfo?.level || moduleInfo?.tag || null;
+      const currentIndex = LEVEL_SEQUENCE.indexOf(currentLevel || "");
+      const moduleIndex = LEVEL_SEQUENCE.indexOf(moduleLevel || "");
+      const canAccessByLevel = currentIndex !== -1 && moduleIndex !== -1 && moduleIndex <= currentIndex;
+      return entry?.passed === true || entry?.status === "unlocked" || canAccessByLevel;
     },
-    [firstModuleId, moduleUnlocks, modulesEnabled]
+    [firstModuleId, moduleUnlocks, modulesEnabled, modules, currentLevel]
   );
 
   const fetchLessons = useCallback(async (moduleId) => {
@@ -161,7 +166,7 @@ const LessonListScreen = ({ navigation, route }) => {
     const entry = completedLessons[item.id] || {};
     const score = Number.isFinite(entry.score) ? entry.score : Number(entry.score);
     const completed = entry.completed === true || (Number.isFinite(score) && score >= 70);
-    const moduleLabel = moduleNameById[item.moduleId] || (item.moduleId ? `Modulo ${item.moduleId}` : null);
+    const moduleLabel = moduleNameById[item.moduleId] || (item.moduleId ? `módulo ${item.moduleId}` : null);
     return (
       <TouchableOpacity
         style={[styles.card, completed && styles.cardCompleted]}
@@ -177,7 +182,7 @@ const LessonListScreen = ({ navigation, route }) => {
             </View>
           )}
         </View>
-        <Text style={styles.level}>{moduleLabel || `Modulo ${item.level || ""}`.trim()}</Text>
+        <Text style={styles.level}>{moduleLabel || `módulo ${item.level || ""}`.trim()}</Text>
       </TouchableOpacity>
     );
   };
@@ -194,7 +199,7 @@ const LessonListScreen = ({ navigation, route }) => {
           {modulesEnabled ? (
             <View style={styles.moduleRow}>
               <TouchableOpacity onPress={() => navigation.navigate("ModuleList")} activeOpacity={0.8}>
-                <Text style={styles.changeModule}>Trocar modulo</Text>
+                <Text style={styles.changeModule}>Trocar módulo</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -212,7 +217,7 @@ const LessonListScreen = ({ navigation, route }) => {
       </View>
       {modulesEnabled ? (
         <Text style={styles.moduleDescription}>
-          Voce esta estudando aulas do modulo {activeModule?.title || "selecionado"}.
+          Você esta estudando aulas do módulo {activeModule?.title || "selecionado"}.
         </Text>
       ) : null}
     </View>

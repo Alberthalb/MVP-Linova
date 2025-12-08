@@ -46,7 +46,8 @@ const LevelQuizScreen = ({ navigation }) => {
 
   const question = useMemo(() => questions[step], [step, questions]);
   const totalSteps = questions.length;
-  const progress = (step + 1) / totalSteps;
+  const displayStep = totalSteps > 0 ? step + 1 : 0;
+  const progress = totalSteps > 0 ? (step + 1) / totalSteps : 0;
 
   useEffect(() => {
     const loadQuestions = async () => {
@@ -73,6 +74,10 @@ const LevelQuizScreen = ({ navigation }) => {
   };
 
   const goNext = async () => {
+    if (totalSteps === 0) {
+      await finalizeLevel();
+      return;
+    }
     if (!question || !answers[question.id]) {
       Alert.alert("Responda para continuar", "Selecione uma opção antes de avançar.");
       return;
@@ -160,7 +165,7 @@ const LevelQuizScreen = ({ navigation }) => {
           <Text style={styles.title}>Quiz de Nível</Text>
           <Text style={styles.subtitle}>Vamos ajustar o conteúdo para você, {getDisplayName(userName)}.</Text>
           <Text style={styles.progress}>
-            Pergunta {step + 1} de {totalSteps}
+            Pergunta {displayStep} de {Math.max(totalSteps, 1)}
           </Text>
         </View>
         <View style={styles.progressBar}>
@@ -170,6 +175,12 @@ const LevelQuizScreen = ({ navigation }) => {
           <View style={styles.loader}>
             <ActivityIndicator color={theme.primary} />
             <Text style={styles.progress}>Carregando perguntas...</Text>
+          </View>
+        ) : totalSteps === 0 ? (
+          <View style={styles.loader}>
+            <Text style={styles.question}>Quiz indisponível no momento.</Text>
+            <Text style={styles.progress}>Vamos seguir com o nível inicial sugerido.</Text>
+            <CustomButton title="Continuar" onPress={finalizeLevel} style={styles.button} />
           </View>
         ) : (
           <>

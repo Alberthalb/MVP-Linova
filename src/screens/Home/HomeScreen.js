@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useState, useEffect, useCallback } from "react";
+import React, { useContext, useMemo, useState, useCallback } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -11,7 +11,6 @@ import { getDisplayName } from "../../utils/userName";
 import { useThemeColors, useIsDarkMode } from "../../hooks/useThemeColors";
 import { defaultSummaryStats } from "../../utils/progressStats";
 import { normalizeLevel, LEVEL_SEQUENCE } from "../../utils/levels";
-import { supabase } from "../../services/supabase";
 
 const min100 = (value) => Math.max(0, Math.min(100, value));
 
@@ -38,7 +37,7 @@ const HomeScreen = ({ navigation }) => {
     selectedModuleId,
     lessonsCompleted = {},
     moduleLessonCounts = {},
-    setModuleLessonCounts,
+    lessonModuleMap = {},
   } =
     useContext(AppContext);
   const displayName = authReady && userName ? getDisplayName(userName, null, "Linova") : "";
@@ -58,30 +57,23 @@ const HomeScreen = ({ navigation }) => {
   }, [lessonsCompleted]);
   const [levelInfo, setLevelInfo] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [lessonsMeta, setLessonsMeta] = useState({});
-  const metaCounts = useMemo(() => {
-    const counts = {};
-    Object.values(lessonsMeta || {}).forEach((moduleId) => {
-      const key = moduleId || null;
-      counts[key] = (counts[key] || 0) + 1;
-    });
-    return counts;
-  }, [lessonsMeta]);
   const stats = progressStats || defaultSummaryStats;
   const theme = useThemeColors();
   const isDarkMode = useIsDarkMode();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const currentLevelLabel = normalizeLevel(level);
   const currentModuleId = selectedModuleId || Object.keys(moduleLessonCounts)[0] || null;
-  const lessonToModule = lessonsMeta;
+  const lessonToModule = lessonModuleMap;
   const xpFromCurrentModule = Object.entries(lessonsCompleted).reduce((acc, [lessonId, entry]) => {
     const moduleId = lessonToModule[lessonId] ?? null;
     if (!moduleId || (currentModuleId && moduleId !== currentModuleId)) return acc;
     const score = Number.isFinite(entry.score) ? entry.score : Number(entry.score);
-    const completed = entry.watched === true || (Number.isFinite(score) && score >= 70);
-    return completed ? acc + 10 : acc;
+    const completed = entry.completed === true || (Number.isFinite(score) && score >= 70);
+    if (!completed) return acc;
+    const earnedXp = Number.isFinite(entry?.xp) ? entry.xp : 10;
+    return acc + earnedXp;
   }, 0);
-  const moduleLessonCount = moduleLessonCounts[currentModuleId] || metaCounts[currentModuleId] || 0;
+  const moduleLessonCount = moduleLessonCounts[currentModuleId] || 0;
   const xpTargetForModule = moduleLessonCount > 0 ? moduleLessonCount * 10 : null;
   const xpTotal = xpFromCurrentModule;
   const currentIndex = LEVEL_SEQUENCE.indexOf(currentLevelLabel);
@@ -113,17 +105,7 @@ const HomeScreen = ({ navigation }) => {
         daysSet.add(dateObj.toISOString().slice(0, 10));
       }
     });
-    if (!daysSet.size) return 0;
-    const today = new Date();
-    let streak = 0;
-    for (let offset = 0; offset < 365; offset += 1) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - offset);
-      const key = d.toISOString().slice(0, 10);
-      if (daysSet.has(key)) streak += 1;
-      else break;
-    }
-    return streak;
+    return daysSet.size || 0; // total de dias distintos estudados
   }, [lessonsCompleted]);
 
   const handleRefresh = () => {
@@ -150,30 +132,9 @@ const HomeScreen = ({ navigation }) => {
       };
     }, [])
   );
-  useEffect(() => {
-    const fetchLessonsMeta = async () => {
-      const { data, error } = await supabase.from("lessons").select("id,module_id,module");
-      if (error) {
-        setLessonsMeta({});
-        setModuleLessonCounts({});
-        return;
-      }
-      const map = {};
-      const counts = {};
-      (data || []).forEach((row) => {
-        const moduleId = row.module_id || row.module || null;
-        map[row.id] = moduleId;
-        const key = moduleId || null;
-        counts[key] = (counts[key] || 0) + 1;
-      });
-      setLessonsMeta(map);
-      setModuleLessonCounts(counts);
-    };
-    fetchLessonsMeta();
-  }, []);
   const handleStatPress = (type) => {
     const messages = {
-      days: `Dias estudando: ${streakDays || 0}. Você já estudou em ${streakDays || 0} dia(s); continue para manter a sequência!`,
+      days: `Dias estudando: ${streakDays || 0}. Voce ja estudou em ${streakDays || 0} dia(s); continue para manter a sequencia!`,
       lessons: `Aulas concluidas (com atividades): ${completedLessonsWithActivity}.`,
       activities: `Atividades respondidas: ${stats.activities}.`,
       xp: `Pontos acumulados: ${stats.xp || 0}. Cada aula vale 10 pontos.`,
@@ -185,28 +146,6 @@ const HomeScreen = ({ navigation }) => {
     setLevelInfo(true);
   };
 
-  useEffect(() => {
-    if (!currentModuleId) return;
-    let active = true;
-    const fetchCount = async () => {
-      const { count, error } = await supabase
-        .from("lessons")
-        .select("id", { count: "exact", head: true })
-        .eq("module_id", currentModuleId);
-      if (!active) return;
-      if (error) {
-        console.warn("[Modules] Falha ao contar aulas do módulo:", error);
-        return;
-      }
-      if (typeof count === "number") {
-        setModuleLessonCounts((prev) => ({ ...(prev || {}), [currentModuleId]: count }));
-      }
-    };
-    fetchCount();
-    return () => {
-      active = false;
-    };
-  }, [currentModuleId, setModuleLessonCounts]);
 
   const handleThemeToggle = () => {
     setDarkMode((prev) => {
@@ -310,8 +249,8 @@ const HomeScreen = ({ navigation }) => {
               <>
                 <Text style={styles.modalTitle}>Seu nivel e: {currentLevelLabel}</Text>
                 <Text style={styles.modalText}>
-                  Cada aula concluida com atividade vale +10 pontos. Complete as aulas do modulo atual para avançar ou faça a prova de
-                  capacidade do próximo modulo para pular rapidamente.
+                  Cada aula concluida com atividade vale +10 pontos. Complete as aulas do módulo atual para avançar ou faça a prova de
+                  capacidade do próximo módulo para pular rapidamente.
                 </Text>
                 <View style={styles.levelList}>
                   {Object.entries(levelDescriptions).map(([lvl, desc]) => (

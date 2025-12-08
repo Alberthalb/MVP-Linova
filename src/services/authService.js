@@ -129,11 +129,17 @@ export const updateUserAccount = async ({ name, email }) => {
   });
   if (authError) throw authError;
   const user = authData?.user;
-  if (user?.id) {
-    await createOrUpdateUserProfile(user.id, {
-      name: name || user.user_metadata?.name || "",
-      email: email || user.email || "",
-    });
+  const userId = user?.id;
+  const profilePayload = {
+    name: name || user?.user_metadata?.name || "",
+    email: email || user?.email || "",
+  };
+  if (userId) {
+    try {
+      await createOrUpdateUserProfile(userId, profilePayload);
+    } catch (err) {
+      console.warn("[Auth] Falha ao atualizar user_profiles:", err);
+    }
   }
-  return { emailPendingVerification: false };
+  return { emailPendingVerification: false, user };
 };

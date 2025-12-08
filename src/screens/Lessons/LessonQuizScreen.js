@@ -293,7 +293,7 @@ const LessonQuizScreen = ({ navigation, route }) => {
         });
       } catch (err) {
         console.warn("[LessonQuiz] Falha ao salvar progresso Supabase:", err);
-        Alert.alert("Erro ao salvar", "Nao foi possivel salvar seu progresso no servidor. Tente novamente.");
+        Alert.alert("Erro ao salvar", "Não foi possível salvar seu progresso no servidor. Tente novamente.");
         return;
       }
 

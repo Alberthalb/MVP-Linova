@@ -1,13 +1,16 @@
-import React, { useContext, useMemo, useState, useEffect } from "react";
+﻿import React, { useContext, useMemo, useState, useEffect } from "react";
 import { View, Text, StyleSheet, TextInput, Switch, Alert, TouchableOpacity, ScrollView, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import CustomButton from "../../components/CustomButton";
 import { AppContext } from "../../context/AppContext";
 import { spacing, typography, radius } from "../../styles/theme";
 import { getDisplayName } from "../../utils/userName";
 import { useThemeColors } from "../../hooks/useThemeColors";
-import { logoutUser, deleteAccount, updateUserAccount } from "../../services/authService";
+import { logoutUser, deleteAccount } from "../../services/authService";
+import { createOrUpdateUserProfile, getUserProfile } from "../../services/userService";
+import { supabase } from "../../services/supabase";
 import { defaultSummaryStats } from "../../utils/progressStats";
 
 const AccountScreen = ({ navigation }) => {
@@ -20,6 +23,13 @@ const AccountScreen = ({ navigation }) => {
     setUserEmail,
     progressStats,
     lessonsCompleted = {},
+    currentUser,
+    setLessonsCompleted,
+    setProgressStats,
+    setModuleLessonCounts,
+    setModuleUnlocks,
+    setSelectedModuleId,
+    setLevel,
   } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -82,57 +92,83 @@ const AccountScreen = ({ navigation }) => {
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  const handleSaveProfile = async () => {
-    const trimmedName = name.trim();
-    const trimmedEmail = email.trim();
-    if (!trimmedName || !trimmedEmail) {
-      Alert.alert("Campos obrigatórios", "Preencha nome e email.");
-      return;
-    }
-    if (!/^[\p{L} ]+$/u.test(trimmedName)) {
-      Alert.alert("Nome inválido", "Use apenas letras e espaços.");
-      return;
-    }
-    if (!emailRegex.test(trimmedEmail)) {
-      Alert.alert("Email inválido", "Verifique o formato do email.");
-      return;
-    }
+  const executeProfileSave = async (trimmedName, trimmedEmail) => {
     setSavingProfile(true);
     try {
-      const result = await updateUserAccount({ name: trimmedName, email: trimmedEmail });
+      // Garante o user_id para sincronizar user_profiles (tabela) e depois atualiza Auth
+      let uid = currentUser?.id || null;
+      if (!uid) {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) throw error;
+        uid = data?.user?.id || null;
+      }
+      if (!uid) throw new Error("Usuario nao autenticado");
+
+      // 1) Atualiza tabela
+      await createOrUpdateUserProfile(uid, { name: trimmedName, email: trimmedEmail });
+
+      // 2) Atualiza Auth (gera fluxo de confirmacao). Se demorar, segue mesmo assim.
+      let authUpdateError = null;
+      const authPromise = supabase.auth.updateUser({
+        email: trimmedEmail,
+        data: { name: trimmedName, email: trimmedEmail },
+      });
+      const authResult = await Promise.race([
+        authPromise,
+        new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 6000)),
+      ]);
+      if (authResult?.error) {
+        authUpdateError = authResult.error;
+      }
+
       setFullName(trimmedName);
       setUserName(getDisplayName(trimmedName, trimmedEmail));
       setUserEmail(trimmedEmail);
-      if (result?.emailPendingVerification) {
-        setProfileInfo(`Enviamos um email para ${trimmedEmail}. Confirme para concluir a troca de email.`);
-      } else {
-        setProfileInfo("Perfil atualizado com sucesso.");
-      }
+      setProfileInfo(
+        authUpdateError
+          ? `Perfil atualizado. Verifique seu email para confirmar a alteracao. (Login nao atualizado: ${authUpdateError.message || "tente novamente"})`
+          : "Perfil atualizado. Verifique seu email para confirmar a alteracao de login (email/usuario)."
+      );
     } catch (error) {
       if (error?.message?.toLowerCase()?.includes("reauth")) {
-        Alert.alert(
-          "Refaça o login",
-          "Por segurança, faça login novamente para alterar o email.",
-          [
-            { text: "Cancelar" },
-            { text: "Fazer login", onPress: forceReauth },
-          ]
-        );
+        Alert.alert("Refaca o login", "Por seguranca, faca login novamente para alterar o email.", [
+          { text: "Cancelar" },
+          { text: "Fazer login", onPress: forceReauth },
+        ]);
       } else {
-        Alert.alert("Erro ao atualizar", error?.message || "Não foi possível atualizar seu perfil.");
+        const message = error?.message || "Não foi possível atualizar seu perfil.";
+        console.warn("[Account] Falha ao salvar perfil:", error);
+        Alert.alert("Erro ao atualizar", message);
       }
     } finally {
       setSavingProfile(false);
     }
   };
 
-  useEffect(() => {
-    setName(fullName || userName || "");
-  }, [fullName, userName]);
-
-  useEffect(() => {
-    setEmail(userEmail || "");
-  }, [userEmail]);
+  const handleSaveProfile = () => {
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    if (!trimmedName || !trimmedEmail) {
+      Alert.alert("Campos obrigatorios", "Preencha nome e email.");
+      return;
+    }
+    if (!/^[\p{L} ]+$/u.test(trimmedName)) {
+      Alert.alert("Nome invalido", "Use apenas letras e espacos.");
+      return;
+    }
+    if (!emailRegex.test(trimmedEmail)) {
+      Alert.alert("Email invalido", "Verifique o formato do email.");
+      return;
+    }
+    Alert.alert(
+      "Confirmar alteracao",
+      `Salvar novo nome/email?\n\nNome: ${trimmedName}\nEmail: ${trimmedEmail}`,
+      [
+        { text: "Cancelar" },
+        { text: "Confirmar", onPress: () => executeProfileSave(trimmedName, trimmedEmail) },
+      ]
+    );
+  };
 
   const handleLogout = async () => {
     try {
@@ -143,15 +179,6 @@ const AccountScreen = ({ navigation }) => {
       Alert.alert("Erro ao sair", error?.message || "Não foi possível sair.");
     }
   };
-
-const handleSummaryPress = (type) => {
-  const messages = {
-    days: `Dias em que você estudou: ${streakDays}.`,
-    lessons: `Aulas concluídas (com atividades): ${completedLessonsWithActivity}.`,
-    xp: `Pontos acumulados: ${summaryStats.xp || 0}. Cada aula vale 10 pontos.`,
-  };
-  setStatInfo(messages[type]);
-};
 
   const handleDeleteAccount = () => {
     setDeletePassword("");
@@ -172,6 +199,27 @@ const handleSummaryPress = (type) => {
     setDeleteLoading(true);
     try {
       await deleteAccount(deletePassword.trim());
+      try {
+        await logoutUser();
+      } catch (_) {
+        // ignore logout errors
+      }
+      const cacheKeys = [
+        "linova:modules",
+        "linova:moduleLessonCounts",
+        `linova:user:${currentUser?.id || "anon"}:progress`,
+        `linova:user:${currentUser?.id || "anon"}:unlocks`,
+      ];
+      AsyncStorage.multiRemove(cacheKeys).catch(() => {});
+      setUserEmail("");
+      setUserName("Linova");
+      setFullName("");
+      setLevel(null);
+      setLessonsCompleted({});
+      setProgressStats(defaultSummaryStats);
+      setModuleLessonCounts({});
+      setModuleUnlocks({});
+      setSelectedModuleId(null);
       const rootNavigator = navigation.getParent()?.getParent();
       rootNavigator?.reset({ index: 0, routes: [{ name: "Welcome" }] });
     } catch (error) {
@@ -185,6 +233,45 @@ const handleSummaryPress = (type) => {
       setDeleteModalVisible(false);
     }
   };
+
+  const handleSummaryPress = (type) => {
+    const messages = {
+      days: `Dias em que você estudou: ${streakDays}.`,
+      lessons: `Aulas concluídas (com atividades): ${completedLessonsWithActivity}.`,
+      xp: `Pontos acumulados: ${summaryStats.xp || 0}. Cada aula vale 10 pontos.`,
+    };
+    setStatInfo(messages[type]);
+  };
+
+  useEffect(() => {
+    setName(fullName || userName || "");
+  }, [fullName, userName]);
+
+  useEffect(() => {
+    setEmail(userEmail || "");
+  }, [userEmail]);
+
+  useEffect(() => {
+    const refreshProfile = async () => {
+      const uid = currentUser?.id;
+      if (!uid) return;
+      try {
+        const profile = await getUserProfile(uid);
+        if (profile?.name) {
+          setFullName(profile.name);
+          setUserName(getDisplayName(profile.name, profile.email || userEmail));
+          setName(profile.name);
+        }
+        if (profile?.email) {
+          setUserEmail(profile.email);
+          setEmail(profile.email);
+        }
+      } catch (error) {
+        console.warn("[Account] Falha ao carregar perfil:", error);
+      }
+    };
+    refreshProfile();
+  }, [currentUser?.id, setFullName, setUserName, setUserEmail]);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
@@ -270,7 +357,7 @@ const handleSummaryPress = (type) => {
       <Modal transparent animationType="fade" visible={!!profileInfo} onRequestClose={() => setProfileInfo(null)} statusBarTranslucent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Confirme seu email</Text>
+            <Text style={styles.modalTitle}>Perfil atualizado</Text>
             <Text style={styles.modalText}>{profileInfo}</Text>
             <TouchableOpacity style={styles.modalButton} activeOpacity={0.8} onPress={() => setProfileInfo(null)}>
               <Text style={styles.modalButtonText}>OK</Text>

@@ -1,5 +1,16 @@
 import React, { useContext, useMemo, useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, Image, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Image,
+  ScrollView,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { SvgUri } from "react-native-svg";
@@ -9,6 +20,7 @@ import { AppContext } from "../../context/AppContext";
 import { getDisplayName } from "../../utils/userName";
 import { useThemeColors } from "../../hooks/useThemeColors";
 import { registerUser } from "../../services/authService";
+import { supabase } from "../../services/supabase";
 
 const RegisterScreen = ({ navigation }) => {
   const { setUserName, setUserEmail, setFullName } = useContext(AppContext);
@@ -55,10 +67,17 @@ const RegisterScreen = ({ navigation }) => {
     setLoading(true);
     try {
       await registerUser(trimmedName, trimmedEmail, trimmedPassword);
+      const { data: sessionData } = await supabase.auth.getSession();
+      const hasSession = !!sessionData?.session?.user;
       const derivedName = getDisplayName(trimmedName, trimmedEmail);
       setUserName(derivedName);
       setFullName(trimmedName);
       setUserEmail(trimmedEmail);
+      if (!hasSession) {
+        Alert.alert("Confirme seu email", "Enviamos um link de confirmação. Após confirmar, faça login para continuar.");
+        navigation.replace("Login");
+        return;
+      }
       Alert.alert("Conta criada", "Vamos descobrir seu nível para personalizar o conteúdo.");
       navigation.replace("LevelQuiz");
     } catch (error) {

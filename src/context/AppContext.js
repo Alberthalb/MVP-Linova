@@ -26,4 +26,6 @@ export const AppContext = createContext({
   setLessonsCompleted: () => {},
   moduleLessonCounts: {},
   setModuleLessonCounts: () => {},
+  lessonModuleMap: {},
+  setLessonModuleMap: () => {},
 });

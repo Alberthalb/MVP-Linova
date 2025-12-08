@@ -7,7 +7,6 @@ import { useThemeColors } from "../../hooks/useThemeColors";
 import { spacing, typography, radius } from "../../styles/theme";
 import CustomButton from "../../components/CustomButton";
 import { createOrUpdateUserProfile, saveModuleUnlock } from "../../services/userService";
-import { supabase } from "../../services/supabase";
 
 const FILTER_TAGS = ["Todos", "Iniciante", "Intermediario", "Avancado"];
 const LEVEL_SEQUENCE = ["A1", "A2", "A2+", "B1", "B1+", "B2", "B2+", "C1", "C1+", "C2"];
@@ -39,72 +38,19 @@ const ModuleListScreen = ({ navigation }) => {
     currentUser,
     lessonsCompleted = {},
     moduleLessonCounts = {},
-    setModuleLessonCounts,
-  } =
-    useContext(AppContext);
+    lessonModuleMap = {},
+  } = useContext(AppContext);
   const theme = useThemeColors();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [filter, setFilter] = useState("Todos");
   const [pendingModule, setPendingModule] = useState(null);
-  const [lessons, setLessons] = useState([]);
   const isFirstLogin = useMemo(() => {
     const creation = currentUser?.created_at;
     const lastSignIn = currentUser?.last_sign_in_at || currentUser?.created_at;
     return creation && lastSignIn && creation === lastSignIn;
   }, [currentUser?.created_at, currentUser?.last_sign_in_at]);
 
-  useEffect(() => {
-    const lessonsRefetch = async () => {
-      const { data, error } = await supabase.from("lessons").select("id,module_id");
-      if (error) {
-        console.warn("[Lessons] Falha ao carregar lista para progresso:", error);
-        setLessons([]);
-        setModuleLessonCounts({});
-        return;
-      }
-      const list = data || [];
-      setLessons(list);
-      const counts = {};
-      list.forEach((row) => {
-        const mId = row.module_id || null;
-        counts[mId] = (counts[mId] || 0) + 1;
-      });
-      setModuleLessonCounts(counts);
-    };
-    lessonsRefetch();
-  }, []);
 
-  useEffect(() => {
-    if (!modules || !modules.length) return;
-    let active = true;
-    const fetchCounts = async () => {
-      const ids = modules.map((m) => m.id).filter(Boolean);
-      if (!ids.length) return;
-      const counts = {};
-      try {
-        const { data, error } = await supabase
-          .from("lessons")
-          .select("module_id", { count: "exact" })
-          .in("module_id", ids);
-        if (!active) return;
-        if (error) {
-          console.warn("[Lessons] Falha ao contar aulas por módulo:", error);
-          return;
-        }
-        (data || []).forEach((row) => {
-          const mId = row.module_id || null;
-          counts[mId] = (counts[mId] || 0) + 1;
-        });
-        setModuleLessonCounts((prev) => ({ ...(prev || {}), ...counts }));
-      } catch (err) {
-        console.warn("[Lessons] Erro inesperado ao contar aulas:", err);
-      }
-    };
-    fetchCounts();
-    return () => {
-      active = false;
-    };
-  }, [modules]);
 
   const availableModules = useMemo(() => {
     return (modules || [])
@@ -120,13 +66,13 @@ const ModuleListScreen = ({ navigation }) => {
 
   const moduleProgress = useMemo(() => {
     const summary = {};
-    lessons.forEach((lesson) => {
-      const moduleId = lesson.module_id || firstModuleId || "unassigned";
+    Object.entries(lessonsCompleted || {}).forEach(([lessonId, entry]) => {
+      const moduleId = lessonModuleMap[lessonId] || firstModuleId || "unassigned";
+      if (!moduleId) return;
       if (!summary[moduleId]) {
         summary[moduleId] = { total: 0, earned: 0 };
       }
-      summary[moduleId].total += 1;
-      const entry = lessonsCompleted[lesson.id] || {};
+      summary[moduleId].total = Math.max(summary[moduleId].total, 1);
       const score = Number.isFinite(entry.score) ? entry.score : Number(entry.score);
       const completed = entry.completed === true || (Number.isFinite(score) && score >= 70);
       if (completed) {
@@ -134,7 +80,7 @@ const ModuleListScreen = ({ navigation }) => {
         summary[moduleId].earned += xpEarned;
       }
     });
-    // Preenche total mesmo se não carregamos as lições (usa contagem agregada)
+    // Preenche total mesmo se nao carregamos as licoes (usa contagem agregada)
     Object.entries(moduleLessonCounts || {}).forEach(([moduleId, count]) => {
       if (!summary[moduleId]) {
         summary[moduleId] = { total: 0, earned: 0 };
@@ -145,7 +91,7 @@ const ModuleListScreen = ({ navigation }) => {
       summary[key].required = (summary[key].total || 0) * 10;
     });
     return summary;
-  }, [lessons, lessonsCompleted, firstModuleId, moduleLessonCounts]);
+  }, [lessonsCompleted, lessonModuleMap, firstModuleId, moduleLessonCounts]);
 
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -157,12 +103,50 @@ const ModuleListScreen = ({ navigation }) => {
     });
   }, [moduleProgress, moduleUnlocks, currentUser?.id]);
 
+  const modulesByLevel = useMemo(() => {
+    const grouped = {};
+    (availableModules || []).forEach((m) => {
+      const lvl = m.levelTag || m.level || m.tag || null;
+      if (!lvl) return;
+      grouped[lvl] = grouped[lvl] || [];
+      grouped[lvl].push(m.id);
+    });
+    return grouped;
+  }, [availableModules]);
+
+  const isLevelCompleted = useCallback(
+    (levelTag) => {
+      const ids = modulesByLevel[levelTag] || [];
+      if (!ids.length) return false;
+      return ids.every((id) => {
+        const entry = moduleUnlocks?.[id];
+        return entry?.passed === true || entry?.status === "unlocked";
+      });
+    },
+    [modulesByLevel, moduleUnlocks]
+  );
+
   const isUnlocked = (moduleId, index) => {
     if (!moduleId) return false;
-    if (index === 0 || moduleId === firstModuleId) return true;
     const entry = moduleUnlocks?.[moduleId];
     const progress = moduleProgress?.[moduleId];
     const meetsXp = progress?.required > 0 && progress?.earned >= progress.required;
+    const moduleInfo = availableModules.find((m) => m.id === moduleId);
+    const moduleLevel = moduleInfo?.levelTag || moduleInfo?.level || moduleInfo?.tag || null;
+    const moduleLevelIndex = LEVEL_SEQUENCE.indexOf(moduleLevel || "");
+
+    // Primeiro módulo do nível inicial (A1) fica liberado por padrão
+    if ((index === 0 || moduleId === firstModuleId) && moduleLevelIndex === 0) return true;
+
+    // Para níveis acima de A1, exige nível anterior completo (ou desbloqueio explícito)
+    if (moduleLevelIndex > 0) {
+      const prevLevel = LEVEL_SEQUENCE[moduleLevelIndex - 1];
+      const prevCompleted = isLevelCompleted(prevLevel);
+      if (!prevCompleted && !(entry?.passed === true || entry?.status === "unlocked")) {
+        return false;
+      }
+    }
+
     return entry?.passed === true || entry?.status === "unlocked" || meetsXp;
   };
 
@@ -171,26 +155,34 @@ const ModuleListScreen = ({ navigation }) => {
     return availableModules.filter((item) => levelBucket(item.levelTag || item.level || item.tag) === filter);
   }, [availableModules, filter]);
 
+  const firstLockedIndex = useMemo(() => {
+    if (!availableModules.length) return -1;
+    for (let i = 0; i < availableModules.length; i += 1) {
+      const m = availableModules[i];
+      if (!isUnlocked(m.id, i)) return i;
+    }
+    return -1;
+  }, [availableModules, isUnlocked]);
+
   const canTakeAssessment = useCallback(
     (moduleIndex) => {
       if (!availableModules.length) return false;
-      const currentIndex = availableModules.findIndex((m) => m.id === selectedModuleId);
-      if (currentIndex === -1) return moduleIndex === 0;
-      return moduleIndex === currentIndex + 1;
+      // Só libera prova do primeiro módulo bloqueado da sequência (independente de filtro/seleção)
+      return firstLockedIndex !== -1 && moduleIndex === firstLockedIndex;
     },
-    [availableModules, selectedModuleId]
+    [firstLockedIndex]
   );
 
   const handleEnterModule = async (module) => {
     if (!module?.id) {
-      Alert.alert("Modulo indisponivel", "Nenhum modulo cadastrado no momento.");
+      Alert.alert("Módulo indisponivel", "Nenhum Módulo cadastrado no momento.");
       return;
     }
     const moduleIndex = availableModules.findIndex((item) => item.id === module.id);
     const unlocked = isUnlocked(module.id, moduleIndex);
     if (!unlocked) {
       if (!canTakeAssessment(moduleIndex)) {
-        Alert.alert("Prova indisponivel", "Voce so pode fazer a prova do proximo modulo na sequencia.");
+        Alert.alert("Prova indisponivel", "Você so pode fazer a prova do proximo Módulo na sequência.");
         return;
       }
       setPendingModule(module);
@@ -237,6 +229,17 @@ const ModuleListScreen = ({ navigation }) => {
     const unlocked = isUnlocked(item.id, index);
     const selected = item.id === selectedModuleId;
     const progress = moduleProgress?.[item.id] || { earned: 0, required: 0 };
+    const moduleIndex = availableModules.findIndex((m) => m.id === item.id);
+    const handleAssessmentPress = () => {
+      if (moduleIndex !== firstLockedIndex) {
+        Alert.alert(
+          "Prova anterior necessaria",
+          "Primeiro faça a prova do módulo anterior que está bloqueado. Depois disso, você poderá fazer a prova deste módulo."
+        );
+        return;
+      }
+      setPendingModule(item);
+    };
     return (
       <TouchableOpacity style={[styles.card, selected && styles.cardSelected]} activeOpacity={0.85} onPress={() => handleEnterModule(item)}>
         <View style={styles.cardHeader}>
@@ -256,9 +259,9 @@ const ModuleListScreen = ({ navigation }) => {
         <Text style={styles.progressText}>
           {progress.earned} / {progress.required || 0} pontos
         </Text>
-        {selected ? <Text style={styles.selectedHint}>Modulo selecionado</Text> : null}
+        {selected ? <Text style={styles.selectedHint}>Módulo selecionado</Text> : null}
         {!unlocked && (
-          <TouchableOpacity style={styles.assessmentLink} onPress={() => setPendingModule(item)} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.assessmentLink} onPress={handleAssessmentPress} activeOpacity={0.8}>
             <Feather name="edit-3" size={14} color={theme.accent} />
             <Text style={styles.assessmentText}>Fazer prova de capacidade</Text>
           </TouchableOpacity>
@@ -274,11 +277,11 @@ const ModuleListScreen = ({ navigation }) => {
           <Feather name="chevron-left" size={20} color={theme.primary} />
           <Text style={styles.backText}>Voltar</Text>
         </TouchableOpacity>
-        <Text style={styles.heading}>Escolha um modulo</Text>
+        <Text style={styles.heading}>Escolha um Módulo</Text>
         <Text style={styles.subheading}>
           {isFirstLogin
-            ? "No primeiro acesso, comece pelo Modulo 1. Para pular para outro modulo, conclua a prova de capacidade."
-            : "Para pular para outro modulo, conclua a prova de capacidade."}
+            ? "No primeiro acesso, comece pelo Módulo 1. Para pular para outro Módulo, conclua a prova de capacidade."
+            : "Para pular para outro Módulo, conclua a prova de capacidade."}
         </Text>
         <FlatList
           data={FILTER_TAGS}
@@ -298,27 +301,18 @@ const ModuleListScreen = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>Nenhum modulo para este filtro.</Text>
+              <Text style={styles.emptyText}>Nenhum Módulo para este filtro.</Text>
             </View>
           }
         />
-        {filteredModules.length === 0 ? (
-          <CustomButton title="Ver aulas" onPress={() => navigation.navigate("LessonList")} style={styles.buttonSpacing} />
-        ) : (
-          <CustomButton
-            title="Ir para aulas do modulo atual"
-            style={styles.buttonSpacing}
-            onPress={() =>
-              handleEnterModule(filteredModules.find((item) => item.id === selectedModuleId) || filteredModules[0] || { id: null })
-            }
-          />
-        )}
       </View>
       {pendingModule ? (
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Prova de capacidade</Text>
-            <Text style={styles.modalText}>Para acessar "{pendingModule.title}", conclua a prova rapida. Se aprovado, o modulo sera liberado.</Text>
+            <Text style={styles.modalText}>
+              Para avançar, primeiro faça a prova do módulo anterior que estiver bloqueado. Depois disso, você poderá fazer a prova para "{pendingModule.title}".
+            </Text>
             <View style={styles.modalActions}>
               <TouchableOpacity onPress={() => setPendingModule(null)} style={styles.modalGhost} activeOpacity={0.8}>
                 <Text style={styles.modalGhostText}>Cancelar</Text>
@@ -340,7 +334,8 @@ const createStyles = (colors) =>
     container: {
       flex: 1,
       paddingHorizontal: spacing.layout,
-      paddingVertical: spacing.layout,
+      paddingTop: spacing.layout,
+      paddingBottom: 0,
       gap: spacing.sm,
     },
     heading: {

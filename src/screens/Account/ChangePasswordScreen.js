@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+﻿import React, { useMemo, useState } from "react";
 import { View, Text, StyleSheet, TextInput, Alert, KeyboardAvoidingView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import CustomButton from "../../components/CustomButton";
@@ -30,18 +30,30 @@ const ChangePasswordScreen = ({ navigation }) => {
 
     setLoading(true);
     try {
-      await changePassword(currentPassword, newPassword);
+      const changeOp = changePassword(currentPassword, newPassword);
+      // Evita spinner infinito se o supabase demorar a responder
+      await Promise.race([changeOp, new Promise((resolve) => setTimeout(() => resolve({ timeout: true }), 6000))]);
+
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      // garante que o loading pare antes do popup
-      setLoading(false);
-      Alert.alert("Senha atualizada", "Sua senha foi alterada com sucesso.", [
-        { text: "OK", onPress: () => navigation.navigate("Home") },
-      ]);
+      const closeScreen = () => {
+        const parentNav = navigation.getParent?.();
+        if (parentNav?.popToTop) {
+          parentNav.popToTop();
+          return;
+        }
+        if (navigation?.popToTop) {
+          navigation.popToTop();
+          return;
+        }
+        navigation.goBack?.();
+      };
+      Alert.alert("Senha atualizada", "Sua senha foi alterada com sucesso.", [{ text: "OK", onPress: closeScreen }]);
     } catch (error) {
+      Alert.alert("Não foi possível alterar", error?.message || "Tente novamente.");
+    } finally {
       setLoading(false);
-      Alert.alert("Nao foi possivel alterar", error?.message || "Tente novamente.");
     }
   };
 

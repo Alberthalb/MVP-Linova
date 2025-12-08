@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 
 const resolveExtra = () =>
   Constants?.expoConfig?.extra ||
@@ -18,6 +19,32 @@ export const supabaseVideoBucket =
 export const supabaseCaptionsBucket =
   supabaseFromExtra.captionsBucket || process.env.EXPO_PUBLIC_SUPABASE_CAPTIONS_BUCKET || DEFAULT_CAPTIONS_BUCKET;
 
+// Prefer SecureStore for tokens; fallback para AsyncStorage se indisponível.
+const secureStorage = {
+  getItem: async (key) => {
+    try {
+      const value = await SecureStore.getItemAsync(key);
+      return value ?? null;
+    } catch (_err) {
+      return AsyncStorage.getItem(key);
+    }
+  },
+  setItem: async (key, value) => {
+    try {
+      await SecureStore.setItemAsync(key, value);
+    } catch (_err) {
+      await AsyncStorage.setItem(key, value);
+    }
+  },
+  removeItem: async (key) => {
+    try {
+      await SecureStore.deleteItemAsync(key);
+    } catch (_err) {
+      await AsyncStorage.removeItem(key);
+    }
+  },
+};
+
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn("[Supabase] EXPO_PUBLIC_SUPABASE_URL ou EXPO_PUBLIC_SUPABASE_ANON_KEY ausentes. Verifique .env/app.config.js");
 }
@@ -27,7 +54,7 @@ export const supabase = createClient(supabaseUrl || "", supabaseAnonKey || "", {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
-    storage: AsyncStorage,
+    storage: secureStorage,
     storageKey: "supabase.auth.token",
   },
 });

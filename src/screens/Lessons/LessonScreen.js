@@ -122,6 +122,8 @@ const LessonScreen = ({ route, navigation }) => {
     if (!modulesEnabled || !lessonModuleId) return true;
     if (lessonModuleId === firstModuleId) return true;
     const entry = moduleUnlocks?.[lessonModuleId];
+    // Se nao temos registro, nao bloqueia; bloqueia apenas quando sabemos que esta locked/failed
+    if (!entry) return true;
     return entry?.passed === true || entry?.status === "unlocked";
   }, [firstModuleId, lessonModuleId, moduleUnlocks, modulesEnabled]);
   const videoRef = useRef(null);
@@ -239,7 +241,7 @@ const LessonScreen = ({ route, navigation }) => {
       const { data, error } = await supabase.from("lessons").select("*").eq("id", lessonId).maybeSingle();
       if (!active) return;
       if (error || !data) {
-        Alert.alert("Aula indisponivel", "Volte e selecione o modulo novamente para carregar a aula.", [
+        Alert.alert("Aula indisponivel", "Volte e selecione o módulo novamente para carregar a aula.", [
           { text: "Ok", onPress: () => navigation.goBack() },
         ]);
         setLoading(false);
@@ -267,9 +269,9 @@ const LessonScreen = ({ route, navigation }) => {
     if (!modulesEnabled || !lessonModuleId) return;
     if (!isLessonModuleUnlocked) {
       Alert.alert(
-        "Modulo bloqueado",
-        "Complete a prova de capacidade para liberar este modulo.",
-        [{ text: "Escolher modulo", onPress: () => navigation.replace("ModuleList") }],
+        "módulo bloqueado",
+        "Complete a prova de capacidade para liberar este módulo.",
+        [{ text: "Escolher módulo", onPress: () => navigation.replace("ModuleList") }],
         { cancelable: false }
       );
     }
